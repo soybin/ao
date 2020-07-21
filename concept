@@ -1,0 +1,38 @@
+一一一 ao (青) 一 a sky renderer 一一一 
+
+一 features 一
+	一- physically accurate atmosphere
+			scattering model
+	-一 physically accurate skydome model
+	一- physically accurate wind
+	一- high user customizability through
+			gui settings
+	-一 user should be able to create a
+			sky model from scratch, or
+			randomly generate one given a
+			vague description
+
+一 possible additions 一
+	一- render frame to image
+	-一 render frames range to video
+
+一 technology 一
+	一- c
+	-一 opengl (glew + glfw)
+	一- dearimgui, or any tool i come up
+			with for user interaction 
+			(a terminal could be nice)
+	-一 raymarching + pathtracing
+			progressive rendering pipeline
+
+一一一一一一一一一一一一一一一一一一一一
+
+/*
+ * these ideas conform the initial
+ * concept for ao (青), although many
+ * of these may be dismissed as the
+ * development progresses.
+ * the end result may be nothing alike
+ * what is about to be described in
+ * this document.
+ */
