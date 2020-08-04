@@ -9,42 +9,14 @@
 #include <cstdio>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_glfw.h"
 #include "shader.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-//--- quad rendering ----//
-
-float vertices[] = { 
-	1.0f, 1.0f,
-	-1.0f, 1.0f,
-	1.0f, -1.0f,
-	-1.0f, -1.0f,
-	-1.0f, 1.0f,
-	1.0f, -1.0f 
-};
-
-//---- 青 data structure ----//
-
-struct ao_struct {
-	// program
-	bool run = 0;
-	bool fullscreen = 0;
-	unsigned int width = 1280;
-	unsigned int height = 720;
-	unsigned int vao;
-	unsigned int vbo;
-	shader* main_shader;
-	GLFWwindow* window;
-	// rendering
-	unsigned int fps_gui;
-	unsigned int fps_sky;
-	// noise / clouds
-} ao_struct;
-
-//---- entry point ----//
+//-------- 青 一 ao --------//
 
 int main(int argc, char* argv[]) {
 
@@ -62,6 +34,9 @@ int main(int argc, char* argv[]) {
 	int fps = 60;
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
+	float box_size_x = 1.0f;
+	float box_size_y = 1.0f;
+	float box_size_z = 1.0f;
 
 	//---- init glfw ----//
 
@@ -118,7 +93,18 @@ int main(int argc, char* argv[]) {
 	glGenBuffers(1, &vbo);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices[0], GL_STATIC_DRAW);
+	// the vertices array won't be further needed
+	{
+		float vertices[] = { 
+			1.0f, 1.0f,
+			-1.0f, 1.0f,
+			1.0f, -1.0f,
+			-1.0f, -1.0f,
+			-1.0f, 1.0f,
+			1.0f, -1.0f 
+		};
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices[0], GL_STATIC_DRAW);
+	}
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
@@ -157,10 +143,17 @@ int main(int argc, char* argv[]) {
 		ImGui::End();
 		ImGui::Begin("skybox");
 		ImGui::End();
+		ImGui::Begin("cloud");
+		ImGui::SliderFloat("size x", &box_size_x, 0.0f, 5.0f);
+		ImGui::SliderFloat("size y", &box_size_y, 0.0f, 5.0f);
+		ImGui::SliderFloat("size z", &box_size_z, 0.0f, 5.0f);
+		ImGui::End();
 
 		// render gui to frame
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
