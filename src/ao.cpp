@@ -16,14 +16,18 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-//-------- 青 一 ao --------//
+//-------- s h a d e r --------//
+
+
+
+//-------- 青 一 a o --------//
 
 int main(int argc, char* argv[]) {
 
 	//---- init ao data ----//
 
-	bool run = 1;
-	bool fullscreen = 0;
+	int run = 1;
+	int fullscreen = 0;
 	int width = 1280;
 	int height = 720;
 	unsigned int vao;
@@ -37,6 +41,9 @@ int main(int argc, char* argv[]) {
 	float box_size_x = 1.0f;
 	float box_size_y = 1.0f;
 	float box_size_z = 1.0f;
+	// skybox
+	int sun_pos_hour = 0;
+	int sun_pos_minute = 0;
 
 	//---- init glfw ----//
 
@@ -142,6 +149,10 @@ int main(int argc, char* argv[]) {
 		}
 		ImGui::End();
 		ImGui::Begin("skybox");
+		ImGui::SliderInt("hour", &sun_pos_hour, 0, 23);
+		ImGui::SliderInt("minute", &sun_pos_minute, 0, 59);
+		// 24 * 60 = 1440 min per day
+		float sun_pos_y = (sun_pos_hour * 60.0f + sun_pos_minute) / 1440.0f;
 		ImGui::End();
 		ImGui::Begin("cloud");
 		ImGui::SliderFloat("size x", &box_size_x, 0.0f, 5.0f);
@@ -154,6 +165,7 @@ int main(int argc, char* argv[]) {
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
+		main_shader->set3f("uSunPos", 0.0f, sun_pos_y, -1.0f + sun_pos_y);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
