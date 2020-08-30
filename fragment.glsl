@@ -1,9 +1,9 @@
 #version 430 core
 
+layout(location = 0) in vec4 v_position;
 layout(location = 0) out vec4 color;
 
-const float MIN_DIST = 0.01;
-const int MAX_DIST = 512;
+const float MIN_DIST = 0.01; const int MAX_DIST = 512;
 const int MAX_STEP = 256;
 const int ITER = 5;
 const float POWER = 5;
@@ -12,6 +12,16 @@ const int FOV = 60;
 uniform int frames;
 uniform vec2 resolution;
 uniform vec3 box_size;
+
+#define PI 3.141592
+#define iSteps 16
+#define jSteps 8
+
+uniform vec3 uSunPos = vec3(0, 0.5, -1.0);
+
+vec3 skydome(vec3 dir) {
+
+}
 
 // box signed distance function
 float box_sdf(vec3 point) {
@@ -49,8 +59,12 @@ void main() {
 	vec3 dir = normalize(vec3(xy, -z));
 	float marched = march(pos, dir);
 	if (marched > 0.0) {
-		color = vec4(vec3(0.0), 1.0);
+		vec3 c = skydome(dir);
+		// Apply exposure.
+		c = 1.0 - exp(-1.0 * c);
+		color = vec4(c, 1.0);
 	} else {
 		color = vec4(vec3(1.0), 1.0);
 	}
 }
+
