@@ -20,7 +20,7 @@ uniform vec3 box_size;
 uniform vec3 uSunPos = vec3(0, 0.5, -1.0);
 
 vec3 skydome(vec3 dir) {
-
+	return vec3(1.0);
 }
 
 // box signed distance function
