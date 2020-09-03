@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_glfw.h"
@@ -16,9 +17,13 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
+#define M_PI 3.14159265
+
 //-------- s h a d e r --------//
 
-
+void init_shader() {
+	
+}
 
 //-------- 青 一 a o --------//
 
@@ -41,9 +46,13 @@ int main(int argc, char* argv[]) {
 	float box_size_x = 1.0f;
 	float box_size_y = 1.0f;
 	float box_size_z = 1.0f;
-	// skybox
-	int sun_pos_hour = 0;
-	int sun_pos_minute = 0;
+	// skydome
+	float sun_direction_x = 0.0f;
+	float sun_direction_y = 0.5f;
+	// camera
+	float camera_pitch = 0.0f;
+	float camera_roll = 0.0f;
+	float camera_yaw = 0.0f;
 
 	//---- init glfw ----//
 
@@ -76,6 +85,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	//---- init shader ----//
+
+	init_shader();
 
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
@@ -149,15 +160,18 @@ int main(int argc, char* argv[]) {
 		}
 		ImGui::End();
 		ImGui::Begin("skybox");
-		ImGui::SliderInt("hour", &sun_pos_hour, 0, 23);
-		ImGui::SliderInt("minute", &sun_pos_minute, 0, 59);
-		// 24 * 60 = 1440 min per day
-		float sun_pos_y = (sun_pos_hour * 60.0f + sun_pos_minute) / 1440.0f;
+		ImGui::SliderFloat("direction x", &sun_direction_x, -1.0f, 1.0f);
+		ImGui::SliderFloat("direction y", &sun_direction_y, -1.0f, 1.0f);
 		ImGui::End();
 		ImGui::Begin("cloud");
 		ImGui::SliderFloat("size x", &box_size_x, 0.0f, 5.0f);
 		ImGui::SliderFloat("size y", &box_size_y, 0.0f, 5.0f);
 		ImGui::SliderFloat("size z", &box_size_z, 0.0f, 5.0f);
+		ImGui::End();
+		ImGui::Begin("camera");
+		ImGui::SliderFloat("pitch", &camera_pitch, 0.0f, 1.0f);
+		ImGui::SliderFloat("yaw", &camera_yaw, 0.0f, 1.0f);
+		ImGui::SliderFloat("roll", &camera_roll, 0.0f, 1.0f);
 		ImGui::End();
 
 		// render gui to frame
@@ -165,7 +179,8 @@ int main(int argc, char* argv[]) {
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
-		main_shader->set3f("uSunPos", 0.0f, sun_pos_y, -1.0f + sun_pos_y);
+		main_shader->set3f("sun_direction", sun_direction_x, sun_direction_y, -1.0f);
+		main_shader->set3f("camera_angle", camera_yaw * M_PI * 2.0f, camera_roll * M_PI * 2.0f, camera_pitch * M_PI * 2.0f);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
