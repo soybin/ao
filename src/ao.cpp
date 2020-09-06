@@ -17,8 +17,6 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-#define M_PI 3.14159265
-
 //-------- s h a d e r --------//
 
 void init_shader() {
