@@ -45,8 +45,7 @@ int main(int argc, char* argv[]) {
 	float box_size_y = 1.0f;
 	float box_size_z = 1.0f;
 	// skydome
-	float sun_direction_x = 0.0f;
-	float sun_direction_y = 0.5f;
+	float time = 6.0f;
 	// camera
 	float camera_pitch = 0.0f;
 	float camera_roll = 0.0f;
@@ -157,9 +156,8 @@ int main(int argc, char* argv[]) {
 			millis_per_frame = 1000 / fps;
 		}
 		ImGui::End();
-		ImGui::Begin("skybox");
-		ImGui::SliderFloat("direction x", &sun_direction_x, -1.0f, 1.0f);
-		ImGui::SliderFloat("direction y", &sun_direction_y, -1.0f, 1.0f);
+		ImGui::Begin("sky");
+		ImGui::SliderFloat("time", &time, 6.0f, 18.0f);
 		ImGui::End();
 		ImGui::Begin("cloud");
 		ImGui::SliderFloat("size x", &box_size_x, 0.0f, 5.0f);
@@ -176,8 +174,18 @@ int main(int argc, char* argv[]) {
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+		// calculate variables based on input
+		//
+		// sunrise - 6:00am
+		// sunset  - 6:00pm
+		float sun_y = (time - 6.0f) / 6.0f;
+		if (time > 12.0f) {
+			sun_y = 2.0f - sun_y;
+		}
+		float sun_z = sun_y - 1.0f;
+
 		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
-		main_shader->set3f("sun_direction", sun_direction_x, sun_direction_y, -1.0f);
+		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
 		main_shader->set3f("camera_angle", camera_yaw * M_PI * 2.0f, camera_roll * M_PI * 2.0f, camera_pitch * M_PI * 2.0f);
 
 		// update screen with new frame
