@@ -179,10 +179,11 @@ int main(int argc, char* argv[]) {
 		// sunrise - 6:00am
 		// sunset  - 6:00pm
 		float sun_y = (time - 6.0f) / 6.0f;
+		float sun_z = sun_y - 1.0f;
 		if (time > 12.0f) {
 			sun_y = 2.0f - sun_y;
+			sun_z = 1.0f - sun_y;
 		}
-		float sun_z = sun_y - 1.0f;
 
 		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
