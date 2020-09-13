@@ -1,10 +1,12 @@
+// beautiful paper which inspired this
+// http://advances.realtimerendering.com/s2015/The%20Real-time%20Volumetric%20Cloudscapes%20of%20Horizon%20-%20Zero%20Dawn%20-%20ARTR.pdf
+
 #version 430 core
 
 layout(location = 0) in vec4 v_position;
 layout(location = 0) out vec4 color;
 
-#define PI 3.14159265
-
+const float PI = 3.14159265;
 const float MIN_DIST = 0.01;
 const int MAX_DIST = 512;
 const int MAX_STEP = 256;
@@ -19,12 +21,41 @@ const vec3 mie_coefficient_upper = vec3(2e-5);
 const vec3 mie_coefficient_lower = mie_coefficient_upper * 1.1;
 const vec3 earth_center = vec3(0.0, -radius_surface, 0.0);
 
-// parameters
+// ---------------------------- //
+// -------- parameters -------- //
+// ---------------------------- //
+
 uniform int frames;
 uniform vec2 resolution;
 uniform vec3 box_size;
 uniform vec3 sun_direction;
-uniform vec3 camera_angle;
+uniform vec3 camera_location;
+uniform mat4 view_matrix;
+
+// ----------------------- //
+// -------- noise -------- //
+// ----------------------- //
+
+vec2 hash_vec2(vec2 point) {
+ 	return fract(cos(point*mat2(-64.2,71.3,81.4,-29.8))*8321.3); 
+}
+
+float voronoi(vec2 point) {
+	float separation = 1.0;
+	vec2 integer = floor(point);
+	vec2 fractional = fract(point);
+	for(int x = -1; x < 2; ++x){
+		for(int y = -1; y < 2; ++y) {
+			float s = distance(hash_vec2(integer + vec2(x,y)) + vec2(x,y), fractional);
+			separation = min(separation, s);
+		}
+	}
+	return separation;
+}
+
+// ------------------------- //
+// -------- sky box -------- //
+// ------------------------- //
 
 vec2 density(vec3 point) {
 	float h = max(0.0, length(point - earth_center) - radius_surface);
@@ -90,21 +121,15 @@ vec3 scatter(vec3 origin, vec3 direction, float l, vec3 lo) {
 	));
 }
 
-// box signed distance function
-float box_sdf(vec3 point) {
-	vec3 x = abs(point) - box_size;
-	return length(max(x, 0.0)) + min(max(x.x, max(x.y, x.z)), 0.0);
-}
-
 void main() {
 	// normalize from -1.0 to 1.0
 	vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
 	uv.x *= resolution.x / resolution.y;
-	vec3 O = vec3(0.0, 0.0, 0.0);
-	vec3 D = normalize(vec3(uv, -2.0));
+	vec3 O = vec3(0.0);//camera_location;
+	vec4 D = vec4(normalize(vec3(uv, -2.0)), 1.0);
+	D = view_matrix * D;
 	vec3 col = vec3(0.0);
-	float L = march(O, D, radius_atmosphere);
-	col = scatter(O, D, L, col);
-	color = vec4(col, 1.0);
+	float L = march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
+	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
+	color = vec4((col), 1.0);
 }
-

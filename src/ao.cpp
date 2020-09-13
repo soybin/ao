@@ -10,6 +10,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_glfw.h"
@@ -27,7 +28,7 @@ void init_shader() {
 
 int main(int argc, char* argv[]) {
 
-	//---- init ao data ----//
+	// ---- init ao data ---- //
 
 	int run = 1;
 	int fullscreen = 0;
@@ -47,11 +48,13 @@ int main(int argc, char* argv[]) {
 	// skydome
 	float time = 6.0f;
 	// camera
+	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	float camera_pitch = 0.0f;
 	float camera_roll = 0.0f;
 	float camera_yaw = 0.0f;
 
-	//---- init glfw ----//
+	// ---- init glfw ---- //
 
 	if (!glfwInit()) {
 		std::cout << "[-] GLFW initialization failed. Exiting ao." << std::endl;
@@ -73,7 +76,7 @@ int main(int argc, char* argv[]) {
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1);
 
-	//---- init glew ----//
+	// ---- init glew ---- //
 
 	if (glewInit() != GLEW_OK) {
 		glfwTerminate();
@@ -81,7 +84,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	//---- init shader ----//
+	// ---- init shader ---- //
 
 	init_shader();
 
@@ -102,7 +105,7 @@ int main(int argc, char* argv[]) {
 	// change color theme
 	ImGui::StyleColorsDark();
 
-	//---- load quad ----//
+	// ---- load quad ---- //
 
 	glGenVertexArrays(1, &vao);
 	glGenBuffers(1, &vbo);
@@ -123,7 +126,7 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
-	//---- work ----//
+	// ---- work ---- //
 
 	std::chrono::system_clock::time_point millis_start = std::chrono::system_clock::now();
 
@@ -165,9 +168,9 @@ int main(int argc, char* argv[]) {
 		ImGui::SliderFloat("size z", &box_size_z, 0.0f, 5.0f);
 		ImGui::End();
 		ImGui::Begin("camera");
-		ImGui::SliderFloat("pitch", &camera_pitch, 0.0f, 1.0f);
-		ImGui::SliderFloat("yaw", &camera_yaw, 0.0f, 1.0f);
-		ImGui::SliderFloat("roll", &camera_roll, 0.0f, 1.0f);
+		ImGui::SliderFloat("pitch", &camera_pitch, 0.0f, 360.0f);
+		ImGui::SliderFloat("yaw", &camera_yaw, 0.0f, 360.0f);
+		ImGui::InputFloat3("camera location", &camera_location.x, 3);
 		ImGui::End();
 
 		// render gui to frame
@@ -182,12 +185,16 @@ int main(int argc, char* argv[]) {
 		float sun_z = sun_y - 1.0f;
 		if (time > 12.0f) {
 			sun_y = 2.0f - sun_y;
-			sun_z = 1.0f - sun_y;
 		}
+
+		glm::mat4 view = view_matrix;
+		view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+		view = glm::rotate(view, glm::radians(camera_pitch), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
-		main_shader->set3f("camera_angle", camera_yaw * M_PI * 2.0f, camera_roll * M_PI * 2.0f, camera_pitch * M_PI * 2.0f);
+		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
+		main_shader->set_mat4fv("view_matrix", view);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
@@ -200,7 +207,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	//---- cleanup ----//
+	// ---- cleanup ---- //
 
 	glfwTerminate();
 	delete main_shader;

@@ -120,3 +120,7 @@ void shader::set3f(const char* name, float v1, float v2, float v3) {
 void shader::set4f(const char* name, float v1, float v2, float v3, float v4) {
   glUniform4f(get_uniform_location(name), v1, v2, v3, v4);
 }
+
+void shader::set_mat4fv(const char* name, glm::mat4 matrix) {
+	glUniformMatrix4fv(get_uniform_location(name), 1, GL_FALSE, &matrix[0][0]);
+}

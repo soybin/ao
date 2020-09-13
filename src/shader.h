@@ -7,6 +7,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <glm/glm.hpp>
 
 class shader {
 	private:
@@ -32,4 +33,5 @@ class shader {
 		void set2f(const char* name, float v1, float v2);
 		void set3f(const char* name, float v1, float v2, float v3);
 		void set4f(const char* name, float v1, float v2, float v3, float v4);
+		void set_mat4fv(const char* name, glm::mat4 matrix);
 };
