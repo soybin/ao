@@ -126,6 +126,16 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
+	// ---- noise ---- texture ---- //
+	
+	glEnable(GL_TEXTURE_3D);
+	glActivateTexture(GL_TEXTURE0);
+	unsigned int noise_texture_id;
+	glGenTextures(1, &noise_texture_id);
+	glBindTexture(GL_TEXTURE_3D, noise_texture_id);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, numX, numY, numZ, 0, GL_RED, GL_UNSIGNED_BYTE, ) // read on docs.gl
+	main_shader->set1i("noise_texture", noise_texture, 0);
+
 	// ---- work ---- //
 
 	std::chrono::system_clock::time_point millis_start = std::chrono::system_clock::now();
@@ -195,6 +205,7 @@ int main(int argc, char* argv[]) {
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
 		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
+
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
