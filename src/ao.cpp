@@ -3,6 +3,9 @@
  * Copyright (c) 2020 Pablo Peñarroja
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -127,15 +130,35 @@ int main(int argc, char* argv[]) {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
 	// ---- noise ---- texture ---- //
+
+	GLubyte noise_texture[] = {
+		0,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1
+	};
+
+	// volume texture - 3d - rgba channels
+	int noise_width, noise_height, noise_depth;
+	noise_width = noise_height = noise_depth = 512;
+	unsigned char* noise_data;
+	noise_data = new unsigned char[noise_width * noise_height * noise_depth * 4];
+	for (int i = 0; i < noise_depth; ++i) {
+		for (int j = 0; j < noise_width; ++j) {
+			for (int k = 0; k < noise_height; k += 4) {
+				*(noise_data+i*noise_width*noise_height+j*noise_width+k) = 0;
+				*(noise_data+i*noise_width*noise_height+j*noise_width+k+1) = 0;
+				*(noise_data+i*noise_width*noise_height+j*noise_width+k+2) = 0;
+				*(noise_data+i*noise_width*noise_height+j*noise_width+k+3) = 0;
+			}
+		}
+	}
 	
 	glEnable(GL_TEXTURE_3D);
-	glActivateTexture(GL_TEXTURE0);
-	unsigned int noise_texture_id;
-	glGenTextures(1, &noise_texture_id);
-	glBindTexture(GL_TEXTURE_3D, noise_texture_id);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, numX, numY, numZ, 0, GL_RED, GL_UNSIGNED_BYTE, ) // read on docs.gl
-	main_shader->set1i("noise_texture", noise_texture, 0);
-
+	glActiveTexture(GL_TEXTURE0);
+	unsigned int noise_id;
+	glGenTextures(1, &noise_id);
+	glBindTexture(GL_TEXTURE_3D, noise_id);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, noise_width, noise_height, noise_depth, 0, GL_RED, GL_UNSIGNED_BYTE, noise_data);
+	delete[] noise_data;
+	main_shader->set1i("noise_texture", noise_id);
 	// ---- work ---- //
 
 	std::chrono::system_clock::time_point millis_start = std::chrono::system_clock::now();
@@ -205,7 +228,6 @@ int main(int argc, char* argv[]) {
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
 		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
-
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
