@@ -131,34 +131,37 @@ int main(int argc, char* argv[]) {
 
 	// ---- noise ---- texture ---- //
 
-	GLubyte noise_texture[] = {
-		0,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1
-	};
-
 	// volume texture - 3d - rgba channels
-	int noise_width, noise_height, noise_depth;
-	noise_width = noise_height = noise_depth = 512;
-	unsigned char* noise_data;
-	noise_data = new unsigned char[noise_width * noise_height * noise_depth * 4];
-	for (int i = 0; i < noise_depth; ++i) {
-		for (int j = 0; j < noise_width; ++j) {
-			for (int k = 0; k < noise_height; k += 4) {
-				*(noise_data+i*noise_width*noise_height+j*noise_width+k) = 0;
-				*(noise_data+i*noise_width*noise_height+j*noise_width+k+1) = 0;
-				*(noise_data+i*noise_width*noise_height+j*noise_width+k+2) = 0;
-				*(noise_data+i*noise_width*noise_height+j*noise_width+k+3) = 0;
+	int noise_width, noise_height, noise_depth, noise_size;
+	noise_width = noise_height = noise_depth = 256;
+	noise_size = noise_width * noise_height;
+	unsigned char* noise_data = new unsigned char[noise_width * noise_height * noise_depth * 4];
+	for (int z = 0; z < noise_depth; ++z) {
+		for (int y = 0; y < noise_height; ++y) {
+			for (int x = 0; x < noise_width; ++x) {
+				unsigned char setto = 128;
+				noise_data[(z * noise_size + y * noise_width + x) * 4 + 0] = setto;
+				noise_data[(z * noise_size + y * noise_width + x) * 4 + 1] = setto;
+				noise_data[(z * noise_size + y * noise_width + x) * 4 + 2] = setto;
+				noise_data[(z * noise_size + y * noise_width + x) * 4 + 3] = setto;
 			}
 		}
 	}
-	
 	glEnable(GL_TEXTURE_3D);
-	glActiveTexture(GL_TEXTURE0);
 	unsigned int noise_id;
 	glGenTextures(1, &noise_id);
 	glBindTexture(GL_TEXTURE_3D, noise_id);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, noise_width, noise_height, noise_depth, 0, GL_RED, GL_UNSIGNED_BYTE, noise_data);
+	glActiveTexture(GL_TEXTURE0 + noise_id);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, noise_width, noise_height, noise_depth, 0, GL_RGBA, GL_UNSIGNED_BYTE, &noise_data[0]);
+
 	delete[] noise_data;
 	main_shader->set1i("noise_texture", noise_id);
+
 	// ---- work ---- //
 
 	std::chrono::system_clock::time_point millis_start = std::chrono::system_clock::now();
