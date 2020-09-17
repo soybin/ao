@@ -21,13 +21,11 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-//-------- s h a d e r --------//
+// -------- n o i s e -------- //
 
-void init_shader() {
-	
-}
+void build_worley_perlin_texture(unsigned char* data_ptr, int width, int height, int depth);
 
-//-------- 青 一 a o --------//
+// -------- 青 一 a o -------- //
 
 int main(int argc, char* argv[]) {
 
@@ -89,8 +87,6 @@ int main(int argc, char* argv[]) {
 
 	// ---- init shader ---- //
 
-	init_shader();
-
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
 	main_shader->set2f("resolution", width, height);
@@ -136,17 +132,8 @@ int main(int argc, char* argv[]) {
 	noise_width = noise_height = noise_depth = 256;
 	noise_size = noise_width * noise_height;
 	unsigned char* noise_data = new unsigned char[noise_width * noise_height * noise_depth * 4];
-	for (int z = 0; z < noise_depth; ++z) {
-		for (int y = 0; y < noise_height; ++y) {
-			for (int x = 0; x < noise_width; ++x) {
-				unsigned char setto = 128;
-				noise_data[(z * noise_size + y * noise_width + x) * 4 + 0] = setto;
-				noise_data[(z * noise_size + y * noise_width + x) * 4 + 1] = setto;
-				noise_data[(z * noise_size + y * noise_width + x) * 4 + 2] = setto;
-				noise_data[(z * noise_size + y * noise_width + x) * 4 + 3] = setto;
-			}
-		}
-	}
+	build_worley_perlin_texture(noise_data, noise_width, noise_height, noise_depth);
+
 	glEnable(GL_TEXTURE_3D);
 	unsigned int noise_id;
 	glGenTextures(1, &noise_id);
@@ -251,3 +238,16 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
+void build_worley_perlin_texture(unsigned char* data_ptr, int width, int height, int depth) {
+	int slice_size = width * height;
+	for (int z = 0; z < depth; ++z) {
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				data_ptr[(z * slice_size + y * width + x) * 4 + 0] = rand() % 255;
+				data_ptr[(z * slice_size + y * width + x) * 4 + 1] = rand() % 255;
+				data_ptr[(z * slice_size + y * width + x) * 4 + 2] = rand() % 255;
+				data_ptr[(z * slice_size + y * width + x) * 4 + 3] = rand() % 25;
+			}
+		}
+	}
+}
