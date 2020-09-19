@@ -26,6 +26,8 @@ const vec3 earth_center = vec3(0.0, -radius_surface, 0.0);
 // ---------------------------- //
 
 uniform int frames;
+uniform float noise_depth;
+uniform float zoom;
 uniform vec2 resolution;
 uniform vec3 box_size;
 uniform vec3 sun_direction;
@@ -100,8 +102,8 @@ void main() {
 	vec3 col = vec3(0.0);
 	float L = atmosphere_march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
 	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
-	//float cc = texture(noise_texture, vec3(gl_FragCoord.xy / resolution, 1.0)).a;
-	color = texture(noise_texture, vec3(gl_FragCoord.xy / resolution, 0.0));
+	//color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx * zoom, noise_depth)).rgb + vec3(noise_depth), 1.0);
+	color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx, noise_depth)).rrr, 1.0);
 }
 
 // ------------------------ //
