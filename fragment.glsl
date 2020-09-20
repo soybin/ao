@@ -102,8 +102,7 @@ void main() {
 	vec3 col = vec3(0.0);
 	float L = atmosphere_march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
 	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
-	//color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx * zoom, noise_depth)).rgb + vec3(noise_depth), 1.0);
-	color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx, noise_depth)).rrr, 1.0);
+	color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx * zoom, noise_depth * noise_depth)).rrr, 1.0);
 }
 
 // ------------------------ //

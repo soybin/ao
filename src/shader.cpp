@@ -36,7 +36,7 @@ int shader::compile_shader(unsigned int type, const char* src) {
   glGetShaderiv(id, GL_INFO_LOG_LENGTH, &len);
   char* message = (char*)alloca(len * sizeof(char));
   glGetShaderInfoLog(id, len, &len, message);
-  std::cout << "Failed to compile " << (type == GL_VERTEX_SHADER ? "vertex" : "fragment") << " shader:" << std::endl << message << std::endl;
+  std::cout << "Failed to compile " << (type == GL_VERTEX_SHADER ? "vertex" : (type == GL_FRAGMENT_SHADER ? "fragment" : "compute")) << " shader:" << std::endl << message << std::endl;
     
   return -1;
 }
@@ -46,15 +46,27 @@ int shader::get_uniform_location(const char* name) {
     return uniform_map[name];
   }
 
-  unsigned int location = glGetUniformLocation(shader_id, name);
+  unsigned int location = glGetUniformLocation(program_id, name);
 
   if (location == -1) {
+		std::cout << "couldn't find " << name << " uniform" << std::endl;
     return -1;
   }
 
   uniform_map[name] = location;
     
   return location;
+}
+
+shader::shader(std::string compute) {
+	std::string strc = parse_shader(compute.c_str());
+	unsigned int program = glCreateProgram();
+	unsigned int cs = compile_shader(GL_COMPUTE_SHADER, strc.c_str());
+	glAttachShader(program, cs);
+	glLinkProgram(program);
+	glValidateProgram(program);
+	glDeleteShader(cs);
+	program_id = program;
 }
 
 shader::shader(std::string vert, std::string frag) {
@@ -75,18 +87,20 @@ shader::shader(std::string vert, std::string frag) {
   if (vert.size()) glDeleteShader(vs);
   glDeleteShader(fs);
 
-  glUseProgram(program);
-
-  shader_id = program;
+  program_id = program;
 }
 
 shader::~shader() {
   glUseProgram(0);
-  glDeleteProgram(shader_id);
+  glDeleteProgram(program_id);
 }
 
 void shader::bind() {
-	glUseProgram(shader_id);
+	glUseProgram(program_id);
+}
+
+void shader::unbind() {
+	glUseProgram(0);
 }
 
 void shader::set1i(const char* name, int v) {

@@ -17,12 +17,13 @@ class shader {
 		int compile_shader(unsigned int type, const char* src);
 		int get_uniform_location(const char* name);
 	public:
-		unsigned int shader_id;
+		unsigned int program_id;
+		shader(std::string compute);
 		shader(std::string vert, std::string frag);
 		~shader();
 
-		// just bind it already boiiiiiiiii
 		void bind();
+		void unbind();
 
 		// uniform setters
 		void set1i(const char* name, int v);

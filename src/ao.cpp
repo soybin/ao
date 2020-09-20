@@ -27,12 +27,9 @@
 
 /*
  * worley noise function:
- * data_ptr = pointer to ubytes array (0 - 255)
- * width, height, depth = dimensions
  * persistance = noisy doisy
- * channel = |0 = r, 1 = g, 2 = b, 3 = a|
  */
-void update_noise(unsigned char* data_ptr, float persistance, int axis_resolution, int subdiv_a, int subdiv_b, int subdiv_c, char channel);
+void update_noise(shader* compute, float persistance, int resolution, int subdivisions_a, int subdivisions_b, int subdivisions_c, char channel);
 
 // -------- 青 一 a o -------- //
 
@@ -46,6 +43,7 @@ int main(int argc, char* argv[]) {
 	int height = 720;
 	unsigned int vao;
 	unsigned int vbo;
+	shader* compute_shader;
 	shader* main_shader;
 	GLFWwindow* window;
 	// rendering
@@ -94,11 +92,15 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// ---- init shader ---- //
+	// ---- init shaders ---- //
 
+	// compute shader
+	compute_shader = new shader("./compute.glsl");
+	// normal shader
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
 	main_shader->set2f("resolution", width, height);
+	main_shader->unbind();
 
 	//---- init imgui ----//
 
@@ -134,46 +136,13 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
-	// ---- init noise compute shader ---- //
-
-	// read compute.glsl data
-	std::string data = "";
-	{
-		std::ifstream file("./compute.glsl");
-		std::string line;
-		for (; std::getline(file, line); data += '\n') {
-			data += line;
-		}
-	}
-	const char* compute_shader_data = data.c_str();
-	// create shader
-	unsigned int compute_shader = glCreateShader(GL_COMPUTE_SHADER);
-	glShaderSource(compute_shader, 1, &compute_shader_data, NULL);
-	glCompileShader(compute_shader);
-	unsigned int compute_program = glCreateProgram();
-	glAttachShader(compute_program, compute_shader);
-	glLinkProgram(compute_program);
-	// check if it compiled
-	int res;
-	glGetShaderiv(compute_shader, GL_COMPILE_STATUS, &res);
-	if (!res) {
-		// compilation failed. exception handling
-		int len;
-		glGetShaderiv(compute_shader, GL_INFO_LOG_LENGTH, &len);
-		char* message = (char*)alloca(len * sizeof(char));
-		glGetShaderInfoLog(compute_shader, len, &len, message);
-		std::cout << "Failed to compile compute shader" << std::endl << message << std::endl;
-	}
-
 	// ---- noise ---- texture ---- //
 
+	unsigned char* noise_data = new unsigned char[256*256*256*4];
+	for (int i = 0; i < 256*256*256*4; ++i) noise_data[i] = 128;
+	int noise_resolution = 256;
 	float zoom = 1.0f;
 	float depth = 0.0f;
-
-	// volume texture - 3d - rgba channels
-	int noise_resolution = 16;
-	unsigned char* noise_data = new unsigned char[noise_resolution * noise_resolution * noise_resolution * 4];
-	//update_noise(noise_data, 0.2f, noise_resolution, 8, 64, 64, 0);
 
 	unsigned int noise_id;
 	glEnable(GL_TEXTURE_3D);
@@ -185,22 +154,11 @@ int main(int argc, char* argv[]) {
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8UI, noise_resolution, noise_resolution, noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, noise_resolution, noise_resolution, noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, 1, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+// build noise texture on compute shader
+	update_noise(compute_shader, 0.0f, noise_resolution, 8, 12, 16, 'R');
 
-	// edit texture
-	glUseProgram(compute_program);
-	int location = glGetUniformLocation(compute_program, "volume");
-	if (location == -1) {
-		std::cout << "bad " << std::endl;
-	}
-	glUniform1i(location, noise_id);
-	glBindImageTexture(0, noise_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA);
-	glDispatchCompute(noise_resolution, noise_resolution, 1);
-	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA);
-	glUseProgram(0);
-	glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
-	delete[] noise_data;
 	main_shader->bind();
 	main_shader->set1i("noise_texture", noise_id);
 
@@ -275,7 +233,7 @@ int main(int argc, char* argv[]) {
 
 		main_shader->set1f("zoom", zoom);
 		main_shader->set1f("noise_depth", depth);
-		main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
+	//	main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
 		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
@@ -294,12 +252,14 @@ int main(int argc, char* argv[]) {
 	// ---- cleanup ---- //
 
 	glfwTerminate();
+
+	delete compute_shader;;
 	delete main_shader;
 
 	return 0;
 }
 
-void compute_worley_grid(glm::vec3* points, int subdivision) {
+void compute_worley_grid(glm::vec4* points, int subdivision, std::string layer) {
 	float cell_size = 1.0f / (float)subdivision;
 	for (int i = 0; i < subdivision; ++i) {
 		for (int j = 0; j < subdivision; ++j) {
@@ -309,121 +269,52 @@ void compute_worley_grid(glm::vec3* points, int subdivision) {
 				float z = (float)rand()/(float)(RAND_MAX);
 				glm::vec3 offset = glm::vec3(i, j, k) * cell_size;
 				glm::vec3 corner = glm::vec3(x, y, z) * cell_size;
-				points[i + subdivision * (j + k * subdivision)] = corner + offset;
+				glm::vec4 result = glm::vec4(offset + corner, 0.0f);
+				//std::string uniform_name = "points_" + layer + "[" + std::to_string(i + subdivision * (j + k * subdivision)) + "]";
+				points[i + subdivision * (j + k * subdivision)] = result;
+				//compute->set3f(uniform_name.c_str(), result.x, result.y, result.z);
 			}
 		}
 	}
 }
 
-static const glm::ivec3 offsets[] = {
-	// centre
-	{0,0,0},
-	// front face
-	{0,0,1},
-	{-1,1,1},
-	{-1,0,1},
-	{-1,-1,1},
-	{0,1,1},
-	{0,-1,1},
-	{1,1,1},
-	{1,0,1},
-	{1,-1,1},
-	// back face
-	{0,0,-1},
-	{-1,1,-1},
-	{-1,0,-1},
-	{-1,-1,-1},
-	{0,1,-1},
-	{0,-1,-1},
-	{1,1,-1},
-	{1,0,-1},
-	{1,-1,-1},
-	// ring around centre
-	{-1,1,0},
-	{-1,0,0},
-	{-1,-1,0},
-	{0,1,0},
-	{0,-1,0},
-	{1,1,0},
-	{1,0,0},
-	{1,-1,0}
-};
-
-inline int max_component_i3(glm::ivec3 v) {
-	return glm::max(v.x, glm::max(v.y, v.z));
-}
-
-inline int min_component_i3(glm::ivec3 v) {
-	return glm::min(v.x, glm::min(v.y, v.z));
-}
-
-float compute_worley_noise(glm::vec3* points, glm::vec3 position, int subdivision) {
-	glm::ivec3 cell_id = glm::ivec3(std::floor(position.x * subdivision), std::floor(position.y * subdivision), std::floor(position.z * subdivision));
-	float min_dist = 1.0f;
-	for (int offset_index = 0; offset_index < 27; ++offset_index) {
-		glm::ivec3 adj_id = cell_id + offsets[offset_index];
-		// in case adj cell is outside, blend with it
-		if (min_component_i3(adj_id) == -1 || max_component_i3(adj_id) == subdivision) {
-			glm::ivec3 wrap_id = glm::mod(glm::vec3(adj_id + glm::ivec3(subdivision)), glm::vec3(subdivision));
-			// get cell index to access point
-			int adj_index = wrap_id.x + subdivision * (wrap_id.y + wrap_id.z * subdivision);
-			glm::vec3 wrapped_point = points[adj_index];
-			for (int wrapped_offset_index = 0; wrapped_offset_index < 27; ++wrapped_offset_index) {
-				glm::vec3 offset = (position - (wrapped_point + glm::vec3(offsets[wrapped_offset_index])));
-				min_dist = std::min(min_dist, glm::dot(offset, offset));
-			}
-		} else {
-			// adj cell is inside map.
-			// calculate distance from position to cell point 
-			int adj_index = adj_id.x + subdivision * (adj_id.y + adj_id.z * subdivision);
-			glm::vec3 offset = position - points[adj_index];
-			min_dist = std::min(min_dist, glm::dot(offset, offset));
-		}
-	}
-	return std::sqrt(min_dist);
-}
-
-void update_noise(unsigned char* data_ptr, float persistance, int axis_resolution, int subdiv_a, int subdiv_b, int subdiv_c, char channel) {
+void update_noise(shader* compute, float persistance, int resolution, int subdivisions_a, int subdivisions_b, int subdivisions_c, char channel) {
 	// lay random points per each cell in
 	// the grid.
 	// for each layer
-	glm::vec3* points_a = new glm::vec3[subdiv_a * subdiv_a * subdiv_a];
-	glm::vec3* points_b = new glm::vec3[subdiv_b * subdiv_b * subdiv_b];
-	glm::vec3* points_c = new glm::vec3[subdiv_c * subdiv_c * subdiv_c];
-	compute_worley_grid(points_a, subdiv_a);
-	compute_worley_grid(points_b, subdiv_b);
-	compute_worley_grid(points_c, subdiv_c);
+	glm::vec4* points_a = new glm::vec4[subdivisions_a * subdivisions_a * subdivisions_a];
+	//glm::vec3* points_b = new glm::vec3[subdivisions_b * subdivisions_b * subdivisions_b];
+	compute->bind();
+	//glm::vec3* points_c = new glm::vec3[subdivisions_c * subdivisions_c * subdivisions_c];
+	compute_worley_grid(points_a, subdivisions_a, "a");
+	//compute_worley_grid(compute, subdivisions_b, "b");
+	//compute_worley_grid(compute, subdivisions_c, "c");
 
-	// create texture.
-	// compute each layer and combine them
-	// for each pixel in the 3d texture
-	int slice_size = axis_resolution * axis_resolution;
-	for (int z = 0; z < axis_resolution; ++z) {
-		std::cout << "slice" << z << std::endl;
-		for (int y = 0; y < axis_resolution; ++y) {
-			for (int x = 0; x < axis_resolution; ++x) {
-				glm::vec3 position = glm::vec3(z, y, x) / (float)axis_resolution;
-				float layer_a = compute_worley_noise(points_a, position, subdiv_a);
-				float layer_b = compute_worley_noise(points_b, position, subdiv_b);
-				float layer_c = compute_worley_noise(points_c, position, subdiv_c);
-				// add layers
-				float noise_sum = layer_a + (layer_b * persistance) + (layer_c * persistance * persistance);
-				// max possible value for noise
-				float max_value = 1.0f + persistance + (persistance * persistance);
-				// map to (float) 0.0 - 1.0
-				noise_sum /= max_value;
-				// invert
-				noise_sum = 1.0f - noise_sum;
-				// map to (int) 0 - 255
-				int result = (int)(noise_sum * 255.0f);
-				// store value
-				data_ptr[(z * slice_size + y * axis_resolution + x) * 4 + channel] = result;
-			}
-		}
-	}
+	// set shader variables
+	compute->set1i("output_texture", 0);
+	compute->set1i("resolution", resolution);
+	compute->set1f("persistance", persistance);
+	compute->set4i("channel_mask", channel & 'R', channel & 'G', channel & 'B', channel & 'A');
+	compute->set1i("subdivisions_a", subdivisions_a);
+	compute->set1i("subdivisions_b", subdivisions_b);
+	compute->set1i("subdivisions_c", subdivisions_c);
 
-	// free up heap storage
+	// pass points
+	unsigned int ssbo_a = 0;
+	glGenBuffers(1, &ssbo_a);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_a);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_a * subdivisions_a * subdivisions_a, points_a, GL_DYNAMIC_COPY);
+	unsigned int block_index = 0;
+	block_index = glGetProgramResourceIndex(compute->program_id, GL_SHADER_STORAGE_BLOCK, "points_a");
+	glShaderStorageBlockBinding(compute->program_id, block_index, 1);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_a);
+
+	
+	// dispatch compute shader
+	glDispatchCompute(resolution, resolution, resolution);
+
+	// wait till finished
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
 	delete[] points_a;
-	delete[] points_b;
-	delete[] points_c;
 }
