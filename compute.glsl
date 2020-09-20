@@ -1,5 +1,5 @@
 #version 430
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 layout(rgba8, location = 0) uniform image3D output_texture;
 
 // point grid buffers (SSBOs)
@@ -114,7 +114,6 @@ float compute_worley_layer(vec3 pos, int sub, int point_grid_index) {
 
 void main() {
 	vec3 position = vec3(gl_GlobalInvocationID) / resolution;
-	//imageStore(output_texture, ivec3(gl_GlobalInvocationID), vec4(1.0));
 	float layer_a = compute_worley_layer(position, subdivisions_a, 0);
 	float layer_b = compute_worley_layer(position, subdivisions_b, 1);
 	float layer_c = compute_worley_layer(position, subdivisions_c, 2);
@@ -124,7 +123,9 @@ void main() {
 	noise_sum /= (1.0 + persistance + (persistance * persistance));
 	// invert
 	noise_sum = 1.0 - noise_sum;
-	// mask channels
+	// accentuate dark tones
+	noise_sum = noise_sum * noise_sum; // noise_sum^2
+	// apply mask
 	vec4 result = channel_mask * noise_sum;
 	// write to texture
 	imageStore(output_texture, ivec3(gl_GlobalInvocationID), result);

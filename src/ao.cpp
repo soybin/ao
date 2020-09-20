@@ -138,9 +138,7 @@ int main(int argc, char* argv[]) {
 
 	// ---- noise ---- texture ---- //
 
-	unsigned char* noise_data = new unsigned char[256*256*256*4];
-	for (int i = 0; i < 256*256*256*4; ++i) noise_data[i] = 128;
-	int noise_resolution = 256;
+	int noise_resolution = 128;
 	float zoom = 1.0f;
 	float depth = 0.0f;
 
@@ -156,8 +154,9 @@ int main(int argc, char* argv[]) {
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, noise_resolution, noise_resolution, noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	glBindImageTexture(0, 1, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
-// build noise texture on compute shader
-	update_noise(compute_shader, 0.0f, noise_resolution, 8, 12, 16, 'R');
+
+	// build noise texture on compute shader
+	update_noise(compute_shader, 0.8f, noise_resolution, 4, 6, 8, 'R');
 
 	main_shader->bind();
 	main_shader->set1i("noise_texture", noise_id);
@@ -259,7 +258,8 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-void compute_worley_grid(glm::vec4* points, int subdivision, std::string layer) {
+void compute_worley_grid(glm::vec4* points, int subdivision) {
+	srand(time(0));
 	float cell_size = 1.0f / (float)subdivision;
 	for (int i = 0; i < subdivision; ++i) {
 		for (int j = 0; j < subdivision; ++j) {
@@ -269,10 +269,7 @@ void compute_worley_grid(glm::vec4* points, int subdivision, std::string layer) 
 				float z = (float)rand()/(float)(RAND_MAX);
 				glm::vec3 offset = glm::vec3(i, j, k) * cell_size;
 				glm::vec3 corner = glm::vec3(x, y, z) * cell_size;
-				glm::vec4 result = glm::vec4(offset + corner, 0.0f);
-				//std::string uniform_name = "points_" + layer + "[" + std::to_string(i + subdivision * (j + k * subdivision)) + "]";
-				points[i + subdivision * (j + k * subdivision)] = result;
-				//compute->set3f(uniform_name.c_str(), result.x, result.y, result.z);
+				points[i + subdivision * (j + k * subdivision)] = glm::vec4(offset + corner, 0.0f);
 			}
 		}
 	}
@@ -283,38 +280,50 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 	// the grid.
 	// for each layer
 	glm::vec4* points_a = new glm::vec4[subdivisions_a * subdivisions_a * subdivisions_a];
-	//glm::vec3* points_b = new glm::vec3[subdivisions_b * subdivisions_b * subdivisions_b];
-	compute->bind();
-	//glm::vec3* points_c = new glm::vec3[subdivisions_c * subdivisions_c * subdivisions_c];
-	compute_worley_grid(points_a, subdivisions_a, "a");
-	//compute_worley_grid(compute, subdivisions_b, "b");
-	//compute_worley_grid(compute, subdivisions_c, "c");
+	glm::vec4* points_b = new glm::vec4[subdivisions_b * subdivisions_b * subdivisions_b];
+	glm::vec4* points_c = new glm::vec4[subdivisions_c * subdivisions_c * subdivisions_c];
+	compute_worley_grid(points_a, subdivisions_a);
+	compute_worley_grid(points_b, subdivisions_b);
+	compute_worley_grid(points_c, subdivisions_c);
 
 	// set shader variables
+	compute->bind();
 	compute->set1i("output_texture", 0);
 	compute->set1i("resolution", resolution);
 	compute->set1f("persistance", persistance);
-	compute->set4i("channel_mask", channel & 'R', channel & 'G', channel & 'B', channel & 'A');
+	compute->set4i("channel_mask", channel == 'R', channel == 'G', channel == 'B', channel == 'A');
 	compute->set1i("subdivisions_a", subdivisions_a);
 	compute->set1i("subdivisions_b", subdivisions_b);
 	compute->set1i("subdivisions_c", subdivisions_c);
 
-	// pass points
+	// pass random points - a
 	unsigned int ssbo_a = 0;
 	glGenBuffers(1, &ssbo_a);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_a);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_a * subdivisions_a * subdivisions_a, points_a, GL_DYNAMIC_COPY);
-	unsigned int block_index = 0;
-	block_index = glGetProgramResourceIndex(compute->program_id, GL_SHADER_STORAGE_BLOCK, "points_a");
-	glShaderStorageBlockBinding(compute->program_id, block_index, 1);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_a);
+	delete[] points_a;
 
+	// pass random points - b
+	unsigned int ssbo_b = 0;
+	glGenBuffers(1, &ssbo_b);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_b);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_b * subdivisions_b * subdivisions_b, points_b, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_b);
+	delete[] points_b;
+
+	// pass random points - c
+	unsigned int ssbo_c = 0;
+	glGenBuffers(1, &ssbo_c);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_c);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_c * subdivisions_c * subdivisions_c, points_c, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_c);
+	delete[] points_c;
 	
 	// dispatch compute shader
-	glDispatchCompute(resolution, resolution, resolution);
+	glDispatchCompute(resolution / 8, resolution / 8, resolution / 8);
 
 	// wait till finished
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
-	delete[] points_a;
 }
