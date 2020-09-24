@@ -202,9 +202,10 @@ int main(int argc, char* argv[]) {
 		ImGui::SliderFloat("time", &time, 6.0f, 18.0f);
 		ImGui::End();
 		ImGui::Begin("cloud");
-		ImGui::SliderFloat("size x", &box_size_x, 0.0f, 5.0f);
-		ImGui::SliderFloat("size y", &box_size_y, 0.0f, 5.0f);
-		ImGui::SliderFloat("size z", &box_size_z, 0.0f, 5.0f);
+		static float cloud_location[3] = { 0.0f, 0.0f, 0.0f };
+		static float cloud_volume[3] = { 1.0f, 1.0f, 1.0f };
+		ImGui::InputFloat3("location", cloud_location);
+		ImGui::InputFloat3("volume", cloud_volume);
 		ImGui::End();
 		ImGui::Begin("camera");
 		ImGui::SliderFloat("pitch", &camera_pitch, 0.0f, 360.0f);
@@ -232,7 +233,8 @@ int main(int argc, char* argv[]) {
 
 		main_shader->set1f("zoom", zoom);
 		main_shader->set1f("noise_depth", depth);
-	//	main_shader->set3f("box_size", box_size_x, box_size_y, box_size_z);
+		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
+		main_shader->set3f("cloud_volume", cloud_volume[0], cloud_volume[1], cloud_volume[2]);
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
 		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);

@@ -8,8 +8,10 @@ layout(location = 0) out vec4 color;
 
 const float PI = 3.14159265;
 const float MIN_DIST = 0.01;
-const int MAX_DIST = 512;
+const float RAYMARCH_MIN_DIST = 1e-3;
+const int RAYMARCH_MAX_STEP = 128;
 const int MAX_STEP = 256;
+const int MAX_DIST = 512;
 
 const float SCATTER_IN_STEP = 16.0;
 const float SCATTER_DEPTH_STEP = 4.0;
@@ -34,6 +36,10 @@ uniform vec3 sun_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
+uniform int samples_per_ray = 3;
+uniform vec3 cloud_location;
+uniform vec3 cloud_volume;
+
 uniform sampler3D noise_texture;
 
 // ----------------------- //
@@ -57,34 +63,9 @@ float hash12(vec2 point) {
 	return fract(sin(dot(point, vec2(12.9898, 78.233))) * 43758.5453123);
 }
 
-float voronoi(vec2 point) {
-	float separation = 1.0;
-	vec2 integer = floor(point);
-	vec2 fractional = fract(point);
-	for(int x = -1; x < 2; ++x){
-		for(int y = -1; y < 2; ++y) {
-			float s = distance(hash22(integer + vec2(x,y)) + vec2(x,y), fractional);
-			separation = min(separation, s);
-		}
-	}
-	return separation;
-}
-
-float perlin(vec2 point) {
-	vec2 integer = floor(point);
-	vec2 fractional = fract(point);
-
-	float a = hash12(integer);
-	float b = hash12(integer + vec2(1.0, 0.0));
-	float c = hash12(integer + vec2(0.0, 1.0));
-	float d = hash12(integer + vec2(1.0, 1.0));
-
-	// interp
-	vec2 u = fractional * fractional * (3.0 - 2.0 * fractional);
-
-	// mix up
-	return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-}
+// ---- clouds ---- declarations ---- //
+vec2 raymarch(vec3 origin, vec3 direction);
+// ---------------------------------- //
 
 // ---- skybox ---- declarations ---- //
 vec2 density(vec3 point);
@@ -102,8 +83,59 @@ void main() {
 	vec3 col = vec3(0.0);
 	float L = atmosphere_march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
 	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
-	color = vec4(texture(noise_texture, vec3(gl_FragCoord.xy / resolution.xx * zoom, noise_depth * noise_depth)).rrr, 1.0);
+	float mult = 1.0;
+	if (raymarch(camera_location, D.xyz).x != -1.0) {
+		mult = 0.0;
+	}
+	color = vec4(col * mult, 1.0);
 }
+
+// ------------------------ //
+// -------- clouds -------- //
+// ------------------------ //
+
+// signed distance function from:
+// https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
+float cloud_sdf(vec3 point) {
+	vec3 q = abs(point + cloud_location) - cloud_volume;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+}
+
+// march view ray to cloud volume
+// returns (x, y):
+//  x -> distance to volume:
+//   if doesn't hit volume -> -1.0
+//   else -> >0.0
+//  y -> distance to opposite end of the volume
+vec2 raymarch(vec3 origin, vec3 direction) {
+	float dist = 0.0;
+	int i;
+	for (i = 0; i < RAYMARCH_MAX_STEP; ++i) {
+		float current_dist = cloud_sdf(origin + direction * dist);
+		dist += current_dist;
+		if (current_dist < RAYMARCH_MIN_DIST) {
+			dist += 3 * current_dist;
+			i = -1;
+			break;
+		}
+	}
+	// box not hit, return -1
+	if (i != -1) {
+		return vec2(-1.0, 0.0);
+	}
+	// box hit, compute distance til exit
+	vec3 escape_origin = origin + direction * dist;
+	float escape_dist = 0.0;
+	for (i = 0;; ++i) {
+		float current_dist = cloud_sdf(escape_origin + direction * escape_dist);
+		escape_dist -= current_dist;
+		if (current_dist < -RAYMARCH_MIN_DIST) {
+			break;
+		}
+	}
+	return vec2(dist, escape_dist);
+}
+
 
 // ------------------------ //
 // -------- skybox -------- //
