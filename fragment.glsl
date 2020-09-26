@@ -64,7 +64,7 @@ float hash12(vec2 point) {
 }
 
 // ---- clouds ---- declarations ---- //
-vec2 raymarch(vec3 origin, vec3 direction);
+float render_cloud_volumes(vec3 direction);
 // ---------------------------------- //
 
 // ---- skybox ---- declarations ---- //
@@ -83,11 +83,8 @@ void main() {
 	vec3 col = vec3(0.0);
 	float L = atmosphere_march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
 	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
-	float mult = 1.0;
-	if (raymarch(camera_location, D.xyz).x != -1.0) {
-		mult = 0.0;
-	}
-	color = vec4(col * mult, 1.0);
+	col += render_cloud_volumes(D.xyz);
+	color = vec4(col, 1.0);
 }
 
 // ------------------------ //
@@ -101,41 +98,61 @@ float cloud_sdf(vec3 point) {
   return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
-// march view ray to cloud volume
-// returns (x, y):
-//  x -> distance to volume:
-//   if doesn't hit volume -> -1.0
-//   else -> >0.0
-//  y -> distance to opposite end of the volume
-vec2 raymarch(vec3 origin, vec3 direction) {
-	float dist = 0.0;
-	int i;
-	for (i = 0; i < RAYMARCH_MAX_STEP; ++i) {
-		float current_dist = cloud_sdf(origin + direction * dist);
-		dist += current_dist;
-		if (current_dist < RAYMARCH_MIN_DIST) {
-			dist += 3 * current_dist;
-			i = -1;
-			break;
-		}
-	}
-	// box not hit, return -1
-	if (i != -1) {
-		return vec2(-1.0, 0.0);
-	}
-	// box hit, compute distance til exit
-	vec3 escape_origin = origin + direction * dist;
-	float escape_dist = 0.0;
-	for (i = 0;; ++i) {
-		float current_dist = cloud_sdf(escape_origin + direction * escape_dist);
-		escape_dist -= current_dist;
-		if (current_dist < -RAYMARCH_MIN_DIST) {
-			break;
-		}
-	}
-	return vec2(dist, escape_dist);
+// remap value with range to 0.0 - 1.0 range
+float remap11(float x, float low, float high) {
+	return (x - low) / (high - low);
 }
 
+float beer(float x) {
+	return exp(-x);
+}
+
+float henyey_greenstein(float x, float y) {
+	float y2 = y * y;
+	return (1.0 - y2) / (4 * PI * pow(1 + y2 - 2 * y * x, 1.5));
+}
+
+float phase(float x) {
+	// parameters
+	float a = 1.0;
+	float b = 1.0;
+	float c = 1.0;
+	float d = 1.0;
+	// blend between parameters
+	float blend = 0.5;
+	float hg_blend = henyey_greenstein(x, a) * (1.0 - blend) + henyey_greenstein(x, -b) * blend;
+	return hg_blend * d + c;
+}
+
+// from
+// http://jcgt.org/published/0007/03/04/
+// returns float2:
+// 	x -> distance to cloud volume
+// 	y -> cloud volume cross section
+vec2 ray_volume_distance(vec3 direction, vec3 vol_left_bound, vec3 vol_right_bound) {
+	vec3 inverted_direction = vec3(1.0) / (-direction);
+	vec3 t0 = (vol_left_bound - camera_location) * inverted_direction;
+	vec3 t1 = (vol_right_bound - camera_location) * inverted_direction;
+	vec3 tmin = min(t0, t1);
+	vec3 tmax = max(t0, t1);
+	float dist_maxmin = max(max(tmin.x, tmin.y), tmin.z);
+	float dist_minmax = min(tmax.x, min(tmax.y, tmax.z));
+	float dist_to_volume = max(0.0, dist_maxmin);
+	float dist_cross_section = max(0.0, dist_minmax - dist_to_volume);
+	return vec2(dist_to_volume, dist_cross_section);
+}
+
+float render_cloud_volumes(vec3 direction) {
+	// for volume in volumes
+	vec2 march = ray_volume_distance(direction, cloud_location - cloud_volume, cloud_location + cloud_volume);
+	if (march.y == 0.0) return 0.0;
+	float distance_per_sample = march.y / samples_per_ray;
+	float density = 0.0;
+	for (int i = 0; i < samples_per_ray; ++i) {
+		density += texture(noise_texture, mod(vec3(direction * distance_per_sample * i * zoom), vec3(1.0))).r;
+	}
+	return density / 4.0;
+}
 
 // ------------------------ //
 // -------- skybox -------- //
