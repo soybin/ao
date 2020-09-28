@@ -37,6 +37,8 @@ uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
 uniform int samples_per_ray = 3;
+uniform float density_threshold;
+uniform float cloud_scale;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
 
@@ -90,6 +92,13 @@ void main() {
 // ------------------------ //
 // -------- clouds -------- //
 // ------------------------ //
+
+float sample_cloud_density(vec3 position) {
+	position = position / 1e3;
+	vec4 texture_value = texture(noise_texture, position);
+	float density = max(0.0, texture_value.r - density_threshold);
+	return density;
+}
 
 // signed distance function from:
 // https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
@@ -149,9 +158,9 @@ float render_cloud_volumes(vec3 direction) {
 	float distance_per_sample = march.y / samples_per_ray;
 	float density = 0.0;
 	for (int i = 0; i < samples_per_ray; ++i) {
-		density += texture(noise_texture, mod(vec3(direction * distance_per_sample * i * zoom), vec3(1.0))).r;
+		density += sample_cloud_density(vec3(direction * distance_per_sample * i * zoom));
 	}
-	return density / 4.0;
+	return density / samples_per_ray;
 }
 
 // ------------------------ //
