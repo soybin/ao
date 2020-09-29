@@ -50,9 +50,17 @@ int main(int argc, char* argv[]) {
 	int fps = 60;
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
-	float box_size_x = 1.0f;
-	float box_size_y = 1.0f;
-	float box_size_z = 1.0f;
+	int number_of_volumes = 1;
+	int samples_per_ray = 3;
+	float density_threshold[number_of_volumes] = 0.666f;
+	float cloud_location_x[number_of_volumes];
+	float cloud_location_y[number_of_volumes];
+	float cloud_location_z[number_of_volumes];
+	for (int i = 0; i < number_of_volumes; ++i) {
+		cloud_location_x[i] = (float)i;
+		cloud_location_y[i] = (float)i;
+		cloud_location_z[i] = (float)i;
+	}
 	// skydome
 	float time = 6.0f;
 	// camera

@@ -36,7 +36,7 @@ uniform vec3 sun_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
-uniform int samples_per_ray = 3;
+uniform int samples_per_ray;
 uniform float density_threshold;
 uniform float cloud_scale;
 uniform vec3 cloud_location;
