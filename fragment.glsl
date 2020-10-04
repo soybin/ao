@@ -1,18 +1,45 @@
-// beautiful paper which inspired this
-// http://advances.realtimerendering.com/s2015/The%20Real-time%20Volumetric%20Cloudscapes%20of%20Horizon%20-%20Zero%20Dawn%20-%20ARTR.pdf
+/*
+ * MIT License
+ * Copyright (c) 2020 Pablo Peñarroja
+ */
+
+/*
+ * although the algorithms here used
+ * try to be physically accurate,
+ * many approximations have to be made
+ * in order for 青 to run in real time.
+ *
+ * i've divided the shader in two
+ * well differentiated sections:
+ *
+ * ->rayleigh scattering:
+ *   ->particles smaller than light
+ *   wavelength.
+ *   ->responsible for skydome;
+ *   red colors at sunset and sunrise
+ *
+ * ->mie scattering:
+ *   ->particles bigger than light
+ * 	 wavelength (water molecules)
+ *   ->responsible for clouds
+ *   ->a precomputed random 3d texture
+ *   is used as a cloud density map
+ */
 
 #version 430 core
 
 layout(location = 0) in vec4 v_position;
-layout(location = 0) out vec4 color;
+layout(location = 0) out vec4 out_color;
 
-const float PI = 3.14159265;
+// rendering constants
 const float MIN_DIST = 0.01;
 const float RAYMARCH_MIN_DIST = 1e-3;
 const int RAYMARCH_MAX_STEP = 128;
 const int MAX_STEP = 256;
 const int MAX_DIST = 512;
 
+// physical constants
+const float PI = 3.14159265;
 const float SCATTER_IN_STEP = 16.0;
 const float SCATTER_DEPTH_STEP = 4.0;
 const float radius_surface = 6360e3;
@@ -27,10 +54,12 @@ const vec3 earth_center = vec3(0.0, -radius_surface, 0.0);
 // -------- parameters -------- //
 // ---------------------------- //
 
-uniform int frames;
+uniform int frame;
+uniform int render_sky;
 uniform float noise_depth;
-uniform float zoom;
+uniform float noise_zoom;
 uniform vec2 resolution;
+uniform vec3 background_color;
 uniform vec3 box_size;
 uniform vec3 sun_direction;
 uniform vec3 camera_location;
@@ -38,65 +67,55 @@ uniform mat4 view_matrix;
 
 uniform int samples_per_ray;
 uniform float density_threshold;
+uniform float density_multiplier;
 uniform float cloud_scale;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
+uniform vec3 wind_direction;
 
 uniform sampler3D noise_texture;
 
-// ----------------------- //
-// -------- noise -------- //
-// ----------------------- //
-
-vec3 hash33(vec3 point) {
-	point = vec3(
-		dot(point,vec3(127.1,311.7, 74.7)),
-		dot(point,vec3(269.5,183.3,246.1)),
-		dot(point,vec3(113.5,271.9,124.6))
-	);
-	return fract(sin(point)*43758.5453123);
-}
-
-vec2 hash22(vec2 point) {
- 	return fract(cos(point*mat2(-64.2,71.3,81.4,-29.8))*8321.3); 
-}
-
-float hash12(vec2 point) {
-	return fract(sin(dot(point, vec2(12.9898, 78.233))) * 43758.5453123);
-}
-
-// ---- clouds ---- declarations ---- //
+// ---- mie ---- declarations ---- //
 float render_cloud_volumes(vec3 direction);
-// ---------------------------------- //
+// ------------------------------- //
 
-// ---- skybox ---- declarations ---- //
-vec2 density(vec3 point);
-float atmosphere_march(vec3 point, vec3 direction, float radius);
-vec3 scatter(vec3 origin, vec3 direction, float l, vec3 lo);
-// ---------------------------------- //
+// ---- rayleigh ---- declarations ---- //
+vec2 rayleigh_density(vec3 point);
+float rayleigh_march(vec3 origin, vec3 direction, float radius);
+vec3 rayleigh_scatter(vec3 direction, float l);
+// ------------------------------------ //
 
 void main() {
-	// normalize from -1.0 to 1.0
+	// compute ray direction
 	vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
 	uv.x *= resolution.x / resolution.y;
-	vec3 O = camera_location;
-	vec4 D = vec4(normalize(vec3(uv, -2.0)), 1.0);
-	D = view_matrix * D;
-	vec3 col = vec3(0.0);
-	float L = atmosphere_march(O, vec3(D.x, D.y, D.z), radius_atmosphere);
-	col = scatter(O, vec3(D.x, D.y, D.z), L, col);
-	col += render_cloud_volumes(D.xyz);
-	color = vec4(col, 1.0);
+	vec4 dir = vec4(normalize(vec3(uv, -2.0)), 1.0);
+	dir = view_matrix * dir;
+
+	// render sky - if wanted by user
+	vec3 color = vec3(0.0);
+	if (render_sky == 1) {
+		float l = rayleigh_march(camera_location, dir.xyz, radius_atmosphere);
+		color = rayleigh_scatter(dir.xyz, l);
+	} else {
+		color = background_color;
+	}
+
+	// add clouds
+	color *= render_cloud_volumes(dir.xyz);
+
+	// return fragment color
+	out_color = vec4(color, 1.0);
 }
 
-// ------------------------ //
-// -------- clouds -------- //
-// ------------------------ //
+// --------------------- //
+// -------- mie -------- //
+// --------------------- //
 
-float sample_cloud_density(vec3 position) {
-	position = position / 1e3;
-	vec4 texture_value = texture(noise_texture, position);
-	float density = max(0.0, texture_value.r - density_threshold);
+float mie_density(vec3 position) {
+	position /= 1e3;
+	vec4 texture_value = texture(noise_texture, position * noise_zoom);
+	float density = max(0.0, texture_value.r - density_threshold) * density_multiplier;
 	return density;
 }
 
@@ -116,6 +135,9 @@ float beer(float x) {
 	return exp(-x);
 }
 
+// paper on participating medium:
+// (Henyey Greenstein and phase functions)
+// http://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf
 float henyey_greenstein(float x, float y) {
 	float y2 = y * y;
 	return (1.0 - y2) / (4 * PI * pow(1 + y2 - 2 * y * x, 1.5));
@@ -154,35 +176,37 @@ vec2 ray_volume_distance(vec3 direction, vec3 vol_left_bound, vec3 vol_right_bou
 float render_cloud_volumes(vec3 direction) {
 	// for volume in volumes
 	vec2 march = ray_volume_distance(direction, cloud_location - cloud_volume, cloud_location + cloud_volume);
-	if (march.y == 0.0) return 0.0;
+	if (march.y == 0.0) return 1.0;
 	float distance_per_sample = march.y / samples_per_ray;
 	float density = 0.0;
 	for (int i = 0; i < samples_per_ray; ++i) {
-		density += sample_cloud_density(vec3(direction * distance_per_sample * i * zoom));
+		vec3 ray_pos = camera_location + (march.x * direction) + direction * distance_per_sample * i;
+		density += mie_density(ray_pos) * distance_per_sample;
 	}
-	return density / samples_per_ray;
+	return beer(density);
 }
 
-// ------------------------ //
-// -------- skybox -------- //
-// ------------------------ //
+// -------------------------- //
+// -------- rayleigh -------- //
+// -------------------------- //
 
-vec2 density(vec3 point) {
+vec2 rayleigh_density(vec3 point) {
 	float h = max(0.0, length(point - earth_center) - radius_surface);
 	return vec2(exp(-h / 8e3), exp(-h / 12e2));
 }
 
-float atmosphere_march(vec3 point, vec3 direction, float radius) {
-    vec3 v = point - earth_center;
-    float b = dot(v, direction);
-    float d = b * b - dot(v, v) + radius * radius;
-    if (d < 0.) return -1.;
-    d = sqrt(d);
-    float r1 = -b - d, r2 = -b + d;
-    return (r1 >= 0.) ? r1 : r2;
+float rayleigh_march(vec3 origin, vec3 direction, float radius) {
+	// origin - earth center
+	vec3 v = origin - earth_center;
+	float b = dot(v, direction);
+	float d = b * b - dot(v, v) + radius * radius;
+	if (d < 0.) return -1.;
+	d = sqrt(d);
+	float r1 = -b - d, r2 = -b + d;
+	return (r1 >= 0.) ? r1 : r2;
 }
 
-vec3 scatter(vec3 origin, vec3 direction, float l, vec3 lo) {
+vec3 rayleigh_scatter(vec3 direction, float l) {
 	// scatter in
 	vec2 total_depth = vec2(0.0);
 	vec3 intensity_rayleigh = vec3(0.0);
@@ -193,19 +217,19 @@ vec3 scatter(vec3 origin, vec3 direction, float l, vec3 lo) {
 
 		// iterate point
 		for (int i = 0; i < SCATTER_IN_STEP; ++i) {
-			vec3 point = origin + direction_sin * i;		
-			vec2 depth = density(point) * l_sin;
+			vec3 point = camera_location + direction_sin * i;		
+			vec2 depth = rayleigh_density(point) * l_sin;
 			total_depth += depth;
 
 			// calculate scatter depth
-			float l_sde = atmosphere_march(point, sun_direction, radius_atmosphere);
+			float l_sde = rayleigh_march(point, sun_direction, radius_atmosphere);
 			vec2 depth_accumulation = vec2(0.0);
 			{
 				l_sde /= SCATTER_DEPTH_STEP;
 				vec3 direction_sde = sun_direction * l_sde;
 				// iterate point
 				for (int j = 0; j < SCATTER_DEPTH_STEP; ++j) {
-					depth_accumulation += density(point + direction_sde * j);
+					depth_accumulation += rayleigh_density(point + direction_sde * j);
 				}
 				depth_accumulation *= l_sde;
 			}
@@ -223,8 +247,8 @@ vec3 scatter(vec3 origin, vec3 direction, float l, vec3 lo) {
 
 	// lo extinction
 	return sqrt(
-		lo * exp(-rayleigh_coefficient * total_depth.x - mie_coefficient_upper * total_depth.y)
-		+
+		//lo * exp(-rayleigh_coefficient * total_depth.x - mie_coefficient_upper * total_depth.y) // cancels to zero because of color == vec3(0.0)
+		//+
 		sun_intensity * (1.0 + mu * mu)
 		*
 		(intensity_rayleigh * rayleigh_coefficient * 0.0597 + intensity_mie * mie_coefficient_lower * 0.0196 / pow(1.58 - 1.52 * mu, 1.5)
