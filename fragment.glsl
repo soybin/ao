@@ -4,26 +4,19 @@
  */
 
 /*
- * although the algorithms here used
- * try to be physically accurate,
- * many approximations have to be made
- * in order for 青 to run in real time.
+ * although the algorithms used here are physically based, many assumptions and
+ * approximations have to be made to accomplish real-time cloud rendering.
  *
- * i've divided the shader in two
- * well differentiated sections:
+ * i've divided the fragment shader in two well-differentiated sections:
  *
  * ->rayleigh scattering:
- *   ->particles smaller than light
- *   wavelength.
- *   ->responsible for skydome;
- *   red colors at sunset and sunrise
+ *   ->particles smaller than light wavelength
+ *   ->responsible for skydome
  *
  * ->mie scattering:
- *   ->particles bigger than light
- * 	 wavelength (water molecules)
+ *   ->particles bigger than light wavelength (water molecules)
  *   ->responsible for clouds
- *   ->a precomputed random 3d texture
- *   is used as a cloud density map
+ *   ->a precomputed random 3d texture is used as a cloud density map
  */
 
 #version 430 core
@@ -135,21 +128,25 @@ float beer(float x) {
 	return exp(-x);
 }
 
-// paper on participating medium:
-// (Henyey Greenstein and phase functions)
-// http://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf
+// approximation of a mie phase function
+// -> due to mie scattering's complexity, 
+//    an approximation is used.
+// -> a cheaper alternative, if needed, 
+//    would be the Schlik phase function,
+//    which doesn't use pow()
 float henyey_greenstein(float x, float y) {
 	float y2 = y * y;
 	return (1.0 - y2) / (4 * PI * pow(1 + y2 - 2 * y * x, 1.5));
 }
 
+// balanced blend
 float phase(float x) {
 	// parameters
 	float a = 1.0;
 	float b = 1.0;
 	float c = 1.0;
 	float d = 1.0;
-	// blend between parameters
+	// blend between parametars
 	float blend = 0.5;
 	float hg_blend = henyey_greenstein(x, a) * (1.0 - blend) + henyey_greenstein(x, -b) * blend;
 	return hg_blend * d + c;

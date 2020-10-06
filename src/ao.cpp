@@ -51,18 +51,18 @@ int main(int argc, char* argv[]) {
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
 	int samples_per_ray = 24;
-	float density_threshold = 0.7f;
-	float density_multiplier = 3.0f;
-	float cloud_location[3] = { 0.0f, -2.0f, 2.0f };
+	float density_threshold = 0.72f;
+	float density_multiplier = 5.0f;
+	float cloud_location[3] = { 0.0f, -3.0f, 2.0f };
 	float cloud_volume[3] = {10.0f, 2.0f, 10.0f};
 	// skydome
 	bool render_sky = 1;
-	float time = 6.0f;
+	float time = 9.0f; // 6:00am - 18:00am
 	float background_color[3] = { 0.0f, 0.0f, 0.0f };
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-	float camera_pitch = 180.0f;
+	float camera_pitch = 205.0f;
 	float camera_yaw = 180.0f;
 
 	// ---- init glfw ---- //
@@ -141,8 +141,8 @@ int main(int argc, char* argv[]) {
 
 	// ---- noise ---- texture ---- //
 
-	int noise_resolution = 128;
-	float zoom = 1.0f;
+	int noise_resolution = 256;
+	float noise_zoom = 64.0f;
 
 	unsigned int noise_id;
 	glEnable(GL_TEXTURE_3D);
@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("noise")) {
-				ImGui::InputFloat("zoom", &zoom);
+				ImGui::InputFloat("zoom", &noise_zoom);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("sky")) {
@@ -218,6 +218,7 @@ int main(int argc, char* argv[]) {
 				ImGui::InputFloat3("location", &cloud_location[0]);
 				ImGui::InputFloat3("volume", &cloud_volume[0]);
 				ImGui::Text("advanced parameters");
+				ImGui::SliderInt("samples per intersecting ray", &samples_per_ray, 4, 64);
 				ImGui::SliderFloat("density threshold", &density_threshold, 0.0f, 1.0f);
 				ImGui::InputFloat("density multiplier", &density_multiplier);
 				ImGui::EndTabItem();
@@ -234,7 +235,6 @@ int main(int argc, char* argv[]) {
 		// render gui to frame
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
 
 		// calculate variables based on input
 		//
@@ -255,10 +255,11 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("frame", frame);
 
 		// rendering
-		main_shader->set1i("samples_per_ray", 24);
+		main_shader->set1i("samples_per_ray", samples_per_ray);
 
-		// noise
-		main_shader->set1f("noise_zoom", zoom);
+		// camera
+		main_shader->set3f("camera_location", -camera_location.x, -camera_location.y, camera_location.z);
+		main_shader->set_mat4fv("view_matrix", view);
 
 		// cloud
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
@@ -266,14 +267,13 @@ int main(int argc, char* argv[]) {
 		main_shader->set1f("density_threshold", density_threshold);
 		main_shader->set1f("density_multiplier", density_multiplier);
 
+		// noise
+		main_shader->set1f("noise_zoom", noise_zoom);
+
 		// skydome
 		main_shader->set1i("render_sky", render_sky);
 		main_shader->set3f("background_color", background_color[0], background_color[1], background_color[2]);
 		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
-
-		// camera
-		main_shader->set3f("camera_location", -camera_location.x, -camera_location.y, camera_location.z);
-		main_shader->set_mat4fv("view_matrix", view);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
@@ -375,5 +375,4 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 
 	// wait till finished
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
 }
