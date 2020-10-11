@@ -61,7 +61,6 @@ uniform mat4 view_matrix;
 
 uniform int cloud_volume_samples;
 uniform int cloud_in_scatter_samples;
-uniform float cloud_darkness_threshold;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
@@ -176,19 +175,20 @@ float phase(float x) {
 }
 
 float mie_in_scatter(vec3 position) {
-	vec3 direction = -(sun_direction);
+	vec3 direction = normalize(sun_direction);
 	vec3 lower_bound = cloud_location - cloud_volume;
 	vec3 upper_bound = cloud_location + cloud_volume;
-	float distance_inside_volume = ray_volume_distance(position, - 1.0 / direction, lower_bound, upper_bound).y;
+	float distance_inside_volume = ray_volume_distance(position, 1 / direction, lower_bound, upper_bound).y;
 	float step_size = distance_inside_volume / cloud_in_scatter_samples;
 	position += direction * step_size * 0.5;
 	float density = 0.0;
 	for (int i = 0; i < cloud_in_scatter_samples; ++i) {
-		density += max(0.0, mie_density(position) * step_size);
 		position += direction * step_size;
+		// make sure new scatter position towards sun is inside cloud volume bounds
+		density += max(0.0, mie_density(position) * step_size);
 	}
 	float transmittance = beer_lambert(density * cloud_absorption);
-	return cloud_darkness_threshold + transmittance * (1.0 - cloud_darkness_threshold);
+	return transmittance;
 }
 
 // from

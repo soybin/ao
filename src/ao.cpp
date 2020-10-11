@@ -31,6 +31,16 @@
  */
 void update_noise(shader* compute, float persistance, int resolution, int subdivisions_a, int subdivisions_b, int subdivisions_c, char channel);
 
+// -------- c l o u d s --------//
+
+struct cloud {
+	int altitude;
+	int noise_resolution;
+};
+
+// based on
+// https://www.weather.gov
+
 // -------- 青 一 a o -------- //
 
 int main(int argc, char* argv[]) {
@@ -50,11 +60,15 @@ int main(int argc, char* argv[]) {
 	int fps = 60;
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
-	int samples_per_ray = 24;
-	float density_threshold = 0.72f;
-	float density_multiplier = 5.0f;
-	float cloud_location[3] = { 0.0f, -3.0f, 2.0f };
-	float cloud_volume[3] = {10.0f, 2.0f, 10.0f};
+	int cloud_volume_samples = 32;
+	int cloud_in_scatter_samples = 16;
+	float cloud_darkness_threshold = 0.0f;
+	float cloud_absorption = 0.0f;
+	float cloud_density_threshold = 0.72f;
+	float cloud_density_multiplier = 5.0f;
+	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
+	float cloud_location[3] = { 0.0f, 3.0f, 2.0f };
+	float cloud_volume[3] = {10.0f, .5f, 10.0f};
 	// skydome
 	bool render_sky = 1;
 	float time = 9.0f; // 6:00am - 18:00am
@@ -62,7 +76,7 @@ int main(int argc, char* argv[]) {
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-	float camera_pitch = 205.0f;
+	float camera_pitch = 150.0f;
 	float camera_yaw = 180.0f;
 
 	// ---- init glfw ---- //
@@ -141,8 +155,8 @@ int main(int argc, char* argv[]) {
 
 	// ---- noise ---- texture ---- //
 
-	int noise_resolution = 256;
-	float noise_zoom = 64.0f;
+	int noise_resolution = 128;
+	float noise_zoom = 0.25f;
 
 	unsigned int noise_id;
 	glEnable(GL_TEXTURE_3D);
@@ -158,7 +172,7 @@ int main(int argc, char* argv[]) {
 	glBindImageTexture(0, 1, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
 
 	// build noise texture on compute shader
-	update_noise(compute_shader, 0.8f, noise_resolution, 4, 6, 8, 'R');
+	update_noise(compute_shader, 0.4f, noise_resolution, 2, 4, 5, 'R');
 
 	main_shader->bind();
 	main_shader->set1i("noise_texture", noise_id);
@@ -215,12 +229,16 @@ int main(int argc, char* argv[]) {
 			}
 			if (ImGui::BeginTabItem("cloud")) {
 				ImGui::Text("basic parameters");
+				ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
+				ImGui::SliderFloat("darkness threshold", &cloud_darkness_threshold, 0.0f, 1.0f);
+				ImGui::ColorEdit3("color", &cloud_color[0]);
 				ImGui::InputFloat3("location", &cloud_location[0]);
 				ImGui::InputFloat3("volume", &cloud_volume[0]);
 				ImGui::Text("advanced parameters");
-				ImGui::SliderInt("samples per intersecting ray", &samples_per_ray, 4, 64);
-				ImGui::SliderFloat("density threshold", &density_threshold, 0.0f, 1.0f);
-				ImGui::InputFloat("density multiplier", &density_multiplier);
+				ImGui::SliderInt("samples per volume ray", &cloud_volume_samples, 32, 128);
+				ImGui::SliderInt("samples per in scatter light ray", &cloud_in_scatter_samples, 4, 32);
+				ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
+				ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("camera")) {
@@ -245,7 +263,8 @@ int main(int argc, char* argv[]) {
 		if (time > 12.0f) {
 			sun_y = 2.0f - sun_y;
 		}
-
+		glm::vec3 sunpos = glm::normalize(glm::vec3(0.0f, sun_y, sun_z));
+		std::cout << sunpos.y << " | " << sunpos.z << std::endl;
 		// compute angles
 		glm::mat4 view = view_matrix;
 		view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -254,18 +273,22 @@ int main(int argc, char* argv[]) {
 		// update frame counter
 		main_shader->set1i("frame", frame);
 
-		// rendering
-		main_shader->set1i("samples_per_ray", samples_per_ray);
-
 		// camera
 		main_shader->set3f("camera_location", -camera_location.x, -camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
 
+		// rendering
+		main_shader->set1i("cloud_volume_samples", cloud_volume_samples);
+		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
+
 		// cloud
+		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
+		main_shader->set1f("cloud_darkness_threshold", cloud_darkness_threshold);
+		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
+		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
+		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
 		main_shader->set3f("cloud_volume", cloud_volume[0], cloud_volume[1], cloud_volume[2]);
-		main_shader->set1f("density_threshold", density_threshold);
-		main_shader->set1f("density_multiplier", density_multiplier);
 
 		// noise
 		main_shader->set1f("noise_zoom", noise_zoom);
