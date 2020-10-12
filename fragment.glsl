@@ -61,17 +61,19 @@ uniform mat4 view_matrix;
 
 uniform int cloud_volume_samples;
 uniform int cloud_in_scatter_samples;
-uniform float cloud_darkness_threshold;
+uniform float cloud_shadowing_threshold;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
 uniform float cloud_scale;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
+uniform vec3 cloud_directional_light;
 
 uniform vec3 wind_direction;
 
-uniform sampler3D noise_texture;
+uniform sampler3D lowres_noise_texture;
+uniform sampler3D highres_noise_texture;
 
 // ---- mie ---- declarations ---- //
 float mie_density(vec3 position);
@@ -112,7 +114,7 @@ void main() {
 	float transmittance = 1.0; // transparent
 	vec3 light = vec3(0.0); // accumulated light
 	
-	vec2 march = ray_volume_distance(camera_location, -1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
+	vec2 march = ray_volume_distance(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
 	float distance_per_step = march.y / cloud_volume_samples;
 	float distance_travelled = 0.0;
 
@@ -142,8 +144,36 @@ void main() {
 // --------------------- //
 
 float mie_density(vec3 position) {
-	vec4 texture_value = texture(noise_texture, position * noise_zoom);
-	float density = max(0.0, texture_value.r - cloud_density_threshold) * cloud_density_multiplier;
+	float scale = 1.0 / 10.0;
+	float time = frame / 100.0;
+	vec3 lower_bound = cloud_location - cloud_volume;
+	vec3 upper_bound = cloud_location + cloud_volume;
+	vec3 uvw = position * scale;
+	vec3 highres_sample_position = uvw + wind_direction * time;
+
+	const float container_fade_distance = 50.0;
+	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
+	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
+	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
+
+	vec4 highres_noise = texture(highres_noise_texture, highres_sample_position);
+	float highres_density = highres_noise.r;
+	float density = max(0.0, highres_density - cloud_density_threshold) * cloud_density_multiplier;
+
+	if (density > 0.0) {
+		float lowres_noise_scale = 2.0;
+		float lowres_noise_weight = 0.7;
+
+		vec3 lowres_sample_position = uvw * lowres_noise_scale;
+		vec4 lowres_noise = texture(lowres_noise_texture, lowres_sample_position);
+		float lowres_noise_fbm = lowres_noise.r;
+		float one_minus_highres = 1.0 - highres_density;
+		float inverse_highres_cubed = one_minus_highres * one_minus_highres * one_minus_highres;
+
+		float cloud_density = density - (1 - lowres_noise_fbm) * inverse_highres_cubed * lowres_noise_weight;
+
+		return cloud_density;
+	}
 	return density;
 }
 
@@ -169,26 +199,24 @@ float phase(float x) {
 	float b = 1.0;
 	float c = 1.0;
 	float d = 1.0;
-	// blend between parametars
+	// blend between parameters
 	float blend = 0.5;
 	float hg_blend = henyey_greenstein(x, a) * (1.0 - blend) + henyey_greenstein(x, -b) * blend;
 	return hg_blend * d + c;
 }
 
 float mie_in_scatter(vec3 position) {
-	vec3 direction = -(sun_direction);
-	vec3 lower_bound = cloud_location - cloud_volume;
-	vec3 upper_bound = cloud_location + cloud_volume;
-	float distance_inside_volume = ray_volume_distance(position, - 1.0 / direction, lower_bound, upper_bound).y;
+	vec3 direction = normalize(sun_direction);
+	float distance_inside_volume = ray_volume_distance(position, 1 / direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
 	float step_size = distance_inside_volume / cloud_in_scatter_samples;
 	position += direction * step_size * 0.5;
 	float density = 0.0;
 	for (int i = 0; i < cloud_in_scatter_samples; ++i) {
-		density += max(0.0, mie_density(position) * step_size);
+		density += max(0.0, mie_density(position)) * step_size;
 		position += direction * step_size;
 	}
 	float transmittance = beer_lambert(density * cloud_absorption);
-	return cloud_darkness_threshold + transmittance * (1.0 - cloud_darkness_threshold);
+	return cloud_shadowing_threshold + transmittance * (1.0 - cloud_shadowing_threshold);
 }
 
 // from
@@ -197,8 +225,8 @@ float mie_in_scatter(vec3 position) {
 // 	x -> distance to cloud volume
 // 	y -> distance across cloud volume
 vec2 ray_volume_distance(vec3 origin, vec3 inverted_direction, vec3 vol_left_bound, vec3 vol_right_bound) {
-	vec3 t0 = (vol_left_bound - camera_location) * inverted_direction;
-	vec3 t1 = (vol_right_bound - camera_location) * inverted_direction;
+	vec3 t0 = (vol_left_bound - origin) * inverted_direction;
+	vec3 t1 = (vol_right_bound - origin) * inverted_direction;
 	vec3 tmin = min(t0, t1);
 	vec3 tmax = max(t0, t1);
 	float dist_maxmin = max(max(tmin.x, tmin.y), tmin.z);

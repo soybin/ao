@@ -61,23 +61,26 @@ int main(int argc, char* argv[]) {
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
 	int cloud_volume_samples = 32;
-	int cloud_in_scatter_samples = 16;
-	float cloud_darkness_threshold = 0.0f;
-	float cloud_absorption = 0.0f;
+	int cloud_in_scatter_samples = 32;
+	float cloud_shadowing_threshold = 0.2f;
+	float cloud_absorption = 0.2f;
 	float cloud_density_threshold = 0.72f;
 	float cloud_density_multiplier = 5.0f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
 	float cloud_location[3] = { 0.0f, 3.0f, 2.0f };
-	float cloud_volume[3] = {10.0f, .5f, 10.0f};
+	float cloud_volume[3] = {10.0f, 2.0f, 10.0f};
+	float cloud_directional_light[3] = {1.0f, 1.0f, 1.0f};
+	// wind
+	float wind_direction[3] = {0.1f, 0.0f, 0.12f};
 	// skydome
 	bool render_sky = 1;
-	float time = 9.0f; // 6:00am - 18:00am
+	float time = 15.0f; // 6:00am - 18:00am
 	float background_color[3] = { 0.0f, 0.0f, 0.0f };
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
-	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-	float camera_pitch = 150.0f;
-	float camera_yaw = 180.0f;
+	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	float camera_pitch = 0.0f;
+	float camera_yaw = 0.0f;
 
 	// ---- init glfw ---- //
 
@@ -153,29 +156,53 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
-	// ---- noise ---- texture ---- //
 
-	int noise_resolution = 128;
-	float noise_zoom = 0.25f;
+	// ---- noise ---- lowres ----- // 
+	
+	unsigned int lowres_noise_id;
+	unsigned int lowres_noise_resolution = 32;
 
-	unsigned int noise_id;
-	glEnable(GL_TEXTURE_3D);
-	glGenTextures(1, &noise_id);
-	glActiveTexture(GL_TEXTURE0 + noise_id);
-	glBindTexture(GL_TEXTURE_3D, noise_id);
+	glGenTextures(1, &lowres_noise_id);
+	glActiveTexture(GL_TEXTURE0 + lowres_noise_id);
+	glBindTexture(GL_TEXTURE_3D, lowres_noise_id);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, noise_resolution, noise_resolution, noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindImageTexture(0, 1, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, lowres_noise_resolution, lowres_noise_resolution, lowres_noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, lowres_noise_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
 
 	// build noise texture on compute shader
-	update_noise(compute_shader, 0.4f, noise_resolution, 2, 4, 5, 'R');
+	update_noise(compute_shader, 0.6f, lowres_noise_resolution, 2, 4, 5, 'R');
 
 	main_shader->bind();
-	main_shader->set1i("noise_texture", noise_id);
+	main_shader->set1i("lowres_noise_texture", lowres_noise_id);
+
+	glEnable(GL_TEXTURE_3D);
+
+	// ---- noise ---- highres ---- //
+
+	float noise_zoom = 0.25f;
+	unsigned int highres_noise_id;
+	unsigned int highres_noise_resolution = 128;
+
+	glGenTextures(1, &highres_noise_id);
+	glActiveTexture(GL_TEXTURE0 + highres_noise_id);
+	glBindTexture(GL_TEXTURE_3D, highres_noise_id);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, highres_noise_resolution, highres_noise_resolution, highres_noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, highres_noise_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+
+	// build noise texture on compute shader
+	update_noise(compute_shader, 0.8f, highres_noise_resolution, 2, 4, 5, 'R');
+
+	main_shader->bind();
+	main_shader->set1i("highres_noise_texture", highres_noise_id);
 
 	// ---- work ---- //
 
@@ -203,7 +230,6 @@ int main(int argc, char* argv[]) {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		ImGui::ShowDemoWindow();
 		// get gui input
 		if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_None)) {
 			if (ImGui::BeginTabItem("rendering")) {
@@ -229,16 +255,23 @@ int main(int argc, char* argv[]) {
 			}
 			if (ImGui::BeginTabItem("cloud")) {
 				ImGui::Text("basic parameters");
+				ImGui::SliderFloat("light1", &cloud_directional_light[0], -1.0f, 1.0f);
+				ImGui::SliderFloat("light2", &cloud_directional_light[1], -1.0f, 1.0f);
+				ImGui::SliderFloat("light3", &cloud_directional_light[2], -1.0f, 1.0f);
 				ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
-				ImGui::SliderFloat("darkness threshold", &cloud_darkness_threshold, 0.0f, 1.0f);
+				ImGui::SliderFloat("shadowing threshold", &cloud_shadowing_threshold, 0.0f, 1.0f);
 				ImGui::ColorEdit3("color", &cloud_color[0]);
 				ImGui::InputFloat3("location", &cloud_location[0]);
 				ImGui::InputFloat3("volume", &cloud_volume[0]);
 				ImGui::Text("advanced parameters");
 				ImGui::SliderInt("samples per volume ray", &cloud_volume_samples, 32, 128);
-				ImGui::SliderInt("samples per in scatter light ray", &cloud_in_scatter_samples, 4, 32);
+				ImGui::SliderInt("samples per in scatter light ray", &cloud_in_scatter_samples, 8, 64);
 				ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
 				ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("wind")) {
+				ImGui::InputFloat3("direction", &wind_direction[0]);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("camera")) {
@@ -274,7 +307,7 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("frame", frame);
 
 		// camera
-		main_shader->set3f("camera_location", -camera_location.x, -camera_location.y, camera_location.z);
+		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
 
 		// rendering
@@ -282,13 +315,17 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
 
 		// cloud
+		main_shader->set3f("cloud_directional_light", cloud_directional_light[0], cloud_directional_light[1], cloud_directional_light[2]);
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
-		main_shader->set1f("cloud_darkness_threshold", cloud_darkness_threshold);
+		main_shader->set1f("cloud_shadowing_threshold", cloud_shadowing_threshold);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
 		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
 		main_shader->set3f("cloud_volume", cloud_volume[0], cloud_volume[1], cloud_volume[2]);
+
+		// wind
+		main_shader->set3f("wind_direction", wind_direction[0], wind_direction[1], wind_direction[2]);
 
 		// noise
 		main_shader->set1f("noise_zoom", noise_zoom);
@@ -369,7 +406,7 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 	compute->set1i("subdivisions_b", subdivisions_b);
 	compute->set1i("subdivisions_c", subdivisions_c);
 
-	// pass random points - a
+	// pass random points a to shader storage buffer object
 	unsigned int ssbo_a = 0;
 	glGenBuffers(1, &ssbo_a);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_a);
@@ -377,7 +414,7 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_a);
 	delete[] points_a;
 
-	// pass random points - b
+	// pass random points b to shader storage buffer object
 	unsigned int ssbo_b = 0;
 	glGenBuffers(1, &ssbo_b);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_b);
@@ -385,7 +422,7 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_b);
 	delete[] points_b;
 
-	// pass random points - c
+	// pass random points c to shader storage buffer object
 	unsigned int ssbo_c = 0;
 	glGenBuffers(1, &ssbo_c);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_c);
