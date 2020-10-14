@@ -145,34 +145,31 @@ void main() {
 
 float mie_density(vec3 position) {
 	float scale = 1.0 / 10.0;
-	float time = frame / 100.0;
+	float time = frame / 1000.0;
 	vec3 lower_bound = cloud_location - cloud_volume;
 	vec3 upper_bound = cloud_location + cloud_volume;
 	vec3 uvw = position * scale;
 	vec3 highres_sample_position = uvw + wind_direction * time;
 
-	const float container_fade_distance = 50.0;
+	const float container_fade_distance = 100.0;
 	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
 	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
 	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
 
 	vec4 highres_noise = texture(highres_noise_texture, highres_sample_position);
 	float highres_density = highres_noise.r;
-	float density = max(0.0, highres_density - cloud_density_threshold) * cloud_density_multiplier;
+	float density = max(0.0, highres_density - cloud_density_threshold);
 
 	if (density > 0.0) {
-		float lowres_noise_scale = 2.0;
-		float lowres_noise_weight = 0.7;
+		float lowres_noise_scale = 5.0;
+		float lowres_noise_weight = 0.1;
 
 		vec3 lowres_sample_position = uvw * lowres_noise_scale;
 		vec4 lowres_noise = texture(lowres_noise_texture, lowres_sample_position);
 		float lowres_noise_fbm = lowres_noise.r;
-		float one_minus_highres = 1.0 - highres_density;
-		float inverse_highres_cubed = one_minus_highres * one_minus_highres * one_minus_highres;
+		float cloud_density = density - lowres_noise_fbm * lowres_noise_weight;
 
-		float cloud_density = density - (1 - lowres_noise_fbm) * inverse_highres_cubed * lowres_noise_weight;
-
-		return cloud_density;
+		return cloud_density * cloud_density_multiplier;
 	}
 	return density;
 }

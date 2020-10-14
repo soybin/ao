@@ -67,9 +67,8 @@ int main(int argc, char* argv[]) {
 	float cloud_density_threshold = 0.72f;
 	float cloud_density_multiplier = 5.0f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
-	float cloud_location[3] = { 0.0f, 3.0f, 2.0f };
-	float cloud_volume[3] = {10.0f, 2.0f, 10.0f};
-	float cloud_directional_light[3] = {1.0f, 1.0f, 1.0f};
+	float cloud_location[3] = { 0.0f, 10.0f, 0.0f };
+	float cloud_volume[3] = { 20.0f, 2.0f, 20.0f };
 	// wind
 	float wind_direction[3] = {0.1f, 0.0f, 0.12f};
 	// skydome
@@ -79,7 +78,7 @@ int main(int argc, char* argv[]) {
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	float camera_pitch = 0.0f;
+	float camera_pitch = 90.0f;
 	float camera_yaw = 0.0f;
 
 	// ---- init glfw ---- //
@@ -185,7 +184,7 @@ int main(int argc, char* argv[]) {
 
 	float noise_zoom = 0.25f;
 	unsigned int highres_noise_id;
-	unsigned int highres_noise_resolution = 128;
+	unsigned int highres_noise_resolution = 256;
 
 	glGenTextures(1, &highres_noise_id);
 	glActiveTexture(GL_TEXTURE0 + highres_noise_id);
@@ -255,9 +254,6 @@ int main(int argc, char* argv[]) {
 			}
 			if (ImGui::BeginTabItem("cloud")) {
 				ImGui::Text("basic parameters");
-				ImGui::SliderFloat("light1", &cloud_directional_light[0], -1.0f, 1.0f);
-				ImGui::SliderFloat("light2", &cloud_directional_light[1], -1.0f, 1.0f);
-				ImGui::SliderFloat("light3", &cloud_directional_light[2], -1.0f, 1.0f);
 				ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
 				ImGui::SliderFloat("shadowing threshold", &cloud_shadowing_threshold, 0.0f, 1.0f);
 				ImGui::ColorEdit3("color", &cloud_color[0]);
@@ -315,7 +311,6 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
 
 		// cloud
-		main_shader->set3f("cloud_directional_light", cloud_directional_light[0], cloud_directional_light[1], cloud_directional_light[2]);
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
 		main_shader->set1f("cloud_shadowing_threshold", cloud_shadowing_threshold);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
