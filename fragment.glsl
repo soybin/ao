@@ -4,19 +4,33 @@
  */
 
 /*
- * although the algorithms used here are physically based, many assumptions and
- * approximations have to be made to accomplish real-time cloud rendering.
+ * this fragment shader is differentiated into two
+ * sections; although both parts work to accomplish
+ * the same goal-atmospheric scattering-the level
+ * of detail required for each section greatly
+ * differs, thus a distinction is required for it
+ * to work in real-time.
  *
- * i've divided the fragment shader in two well-differentiated sections:
+ * ->atmosphere rendering:
+ *   ->responsible for computing atmospheric
+ *     scattering without accounting for any
+ *     light-path modifier other than air
+ *     itself with its common particles.
+ *   ->what you would see on a clear sunny
+ *     day.
  *
- * ->rayleigh scattering:
- *   ->particles smaller than light wavelength
- *   ->responsible for skydome
+ * ->cloud rendering:
+ *   ->renders scattering due to clouds-regions
+ *     where crystalls of water scatter light-in
+ *     the atmosphere.
+ *   ->precomputed 3d worley-perlin noise textures
+ *     are used to compute the scattering within 
+ *     a specific region-cloud_location and
+ *     cloud_volume-due to cloud interference
+ *     along the view ray.
  *
- * ->mie scattering:
- *   ->particles bigger than light wavelength (water molecules)
- *   ->responsible for clouds
- *   ->a precomputed random 3d texture is used as a cloud density map
+ * the two alorithms share very few variables, so
+ * they're mostly independent.
  */
 
 #version 430 core
@@ -24,20 +38,14 @@
 layout(location = 0) in vec4 v_position;
 layout(location = 0) out vec4 out_color;
 
-// rendering constants
-const float MIN_DIST = 0.01;
-const float RAYMARCH_MIN_DIST = 1e-3;
-const int RAYMARCH_MAX_STEP = 128;
-const int MAX_STEP = 256;
-const int MAX_DIST = 512;
-
-// physical constants
 const float PI = 3.14159265;
+
+// planet's atmosphere constants-earth by default
 const float SCATTER_IN_STEP = 16.0;
 const float SCATTER_DEPTH_STEP = 4.0;
 const float radius_surface = 6360e3;
 const float radius_atmosphere = 6380e3;
-const float sun_intensity = 10.0;
+const float sun_intensity = 8.2;
 const vec3 rayleigh_coefficient = vec3(58e-7, 135e-7, 331e-7);
 const vec3 mie_coefficient_upper = vec3(2e-5);
 const vec3 mie_coefficient_lower = mie_coefficient_upper * 1.1;
@@ -65,29 +73,31 @@ uniform float cloud_shadowing_threshold;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
-uniform float cloud_scale;
+uniform float cloud_noise_main_scale;
+uniform float cloud_noise_detail_scale;
+uniform float cloud_noise_detail_weight;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
 uniform vec3 cloud_directional_light;
 
 uniform vec3 wind_direction;
 
-uniform sampler3D lowres_noise_texture;
-uniform sampler3D highres_noise_texture;
+uniform sampler3D main_noise_texture;
+uniform sampler3D detail_noise_texture;
 
-// ---- mie ---- declarations ---- //
+// ---- clouds ---- declarations ---- //
 float mie_density(vec3 position);
 float beer_lambert(float x);
 float henyey_greenstein(float x, float y);
 float phase(float x);
 float mie_in_scatter(vec3 position);
-vec2 ray_volume_distance(vec3 origin, vec3 inverted_direction, vec3 vol_left_bound, vec3 vol_right_bound);
+vec2 ray_to_cloud(vec3 origin, vec3 inverted_direction, vec3 vol_left_bound, vec3 vol_right_bound);
 // ------------------------------- //
 
-// ---- rayleigh ---- declarations ---- //
-vec2 rayleigh_density(vec3 point);
-float rayleigh_march(vec3 origin, vec3 direction, float radius);
-vec3 rayleigh_scatter(vec3 direction, float l);
+// ---- atmosphere ---- declarations ---- //
+vec2 atmosphere_density(vec3 point);
+float atmosphere_march(vec3 origin, vec3 direction, float radius);
+vec3 atmosphere_scatter(vec3 direction, float l);
 // ------------------------------------ //
 
 void main() {
@@ -101,12 +111,12 @@ void main() {
 
 	// ---- rayleigh ---- //
 
-	vec3 rayleigh_color = vec3(0.0);
+	vec3 atmosphere_color = vec3(0.0);
 	if (render_sky == 1) {
-		float l = rayleigh_march(camera_location, dir.xyz, radius_atmosphere);
-		rayleigh_color = rayleigh_scatter(dir.xyz, l);
+		float l = atmosphere_march(camera_location, dir.xyz, radius_atmosphere);
+		atmosphere_color = atmosphere_scatter(dir.xyz, l);
 	} else {
-		rayleigh_color = background_color;
+		atmosphere_color = background_color;
 	}
 
 	// ---- mie ---- //
@@ -114,7 +124,7 @@ void main() {
 	float transmittance = 1.0; // transparent
 	vec3 light = vec3(0.0); // accumulated light
 	
-	vec2 march = ray_volume_distance(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
+	vec2 march = ray_to_cloud(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
 	float distance_per_step = march.y / cloud_volume_samples;
 	float distance_travelled = 0.0;
 
@@ -133,7 +143,7 @@ void main() {
 		}
 	}
 
-	vec3 color = (rayleigh_color * transmittance) + (light * cloud_color);
+	vec3 color = (atmosphere_color * transmittance) + (light * cloud_color);
 
 	// return fragment color
 	out_color = vec4(color, 1.0);
@@ -144,34 +154,28 @@ void main() {
 // --------------------- //
 
 float mie_density(vec3 position) {
-	float scale = 1.0 / 10.0;
 	float time = frame / 1000.0;
 	vec3 lower_bound = cloud_location - cloud_volume;
 	vec3 upper_bound = cloud_location + cloud_volume;
-	vec3 uvw = position * scale;
-	vec3 highres_sample_position = uvw + wind_direction * time;
+	vec3 uvw = position * cloud_noise_main_scale;
+	vec3 main_sample_location = uvw + wind_direction * time;
 
 	const float container_fade_distance = 100.0;
 	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
 	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
 	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
 
-	vec4 highres_noise = texture(highres_noise_texture, highres_sample_position);
-	float highres_density = highres_noise.r;
-	float density = max(0.0, highres_density - cloud_density_threshold);
+	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r;
+	float density = max(0.0, main_noise_fbm - cloud_density_threshold);
 
 	if (density > 0.0) {
-		float lowres_noise_scale = 5.0;
-		float lowres_noise_weight = 0.1;
-
-		vec3 lowres_sample_position = uvw * lowres_noise_scale;
-		vec4 lowres_noise = texture(lowres_noise_texture, lowres_sample_position);
-		float lowres_noise_fbm = lowres_noise.r;
-		float cloud_density = density - lowres_noise_fbm * lowres_noise_weight;
-
-		return cloud_density * cloud_density_multiplier;
+		vec3 detail_sample_position = uvw * cloud_noise_detail_scale;
+		float detail_noise_fbm = texture(detail_noise_texture, detail_sample_position).r;
+		density -= detail_noise_fbm * cloud_noise_detail_weight;
+		return density * cloud_density_multiplier;
 	}
-	return density;
+
+	return 0.0;
 }
 
 float beer_lambert(float x) {
@@ -204,7 +208,7 @@ float phase(float x) {
 
 float mie_in_scatter(vec3 position) {
 	vec3 direction = normalize(sun_direction);
-	float distance_inside_volume = ray_volume_distance(position, 1 / direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
+	float distance_inside_volume = ray_to_cloud(position, 1 / direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
 	float step_size = distance_inside_volume / cloud_in_scatter_samples;
 	position += direction * step_size * 0.5;
 	float density = 0.0;
@@ -221,7 +225,7 @@ float mie_in_scatter(vec3 position) {
 // returns float2:
 // 	x -> distance to cloud volume
 // 	y -> distance across cloud volume
-vec2 ray_volume_distance(vec3 origin, vec3 inverted_direction, vec3 vol_left_bound, vec3 vol_right_bound) {
+vec2 ray_to_cloud(vec3 origin, vec3 inverted_direction, vec3 vol_left_bound, vec3 vol_right_bound) {
 	vec3 t0 = (vol_left_bound - origin) * inverted_direction;
 	vec3 t1 = (vol_right_bound - origin) * inverted_direction;
 	vec3 tmin = min(t0, t1);
@@ -233,16 +237,16 @@ vec2 ray_volume_distance(vec3 origin, vec3 inverted_direction, vec3 vol_left_bou
 	return vec2(dist_to_volume, dist_across_volume);
 }
 
-// -------------------------- //
-// -------- rayleigh -------- //
-// -------------------------- //
+// ---------------------------- //
+// -------- atmosphere -------- //
+// ---------------------------- //
 
-vec2 rayleigh_density(vec3 point) {
+vec2 atmosphere_density(vec3 point) {
 	float h = max(0.0, length(point - earth_center) - radius_surface);
 	return vec2(exp(-h / 8e3), exp(-h / 12e2));
 }
 
-float rayleigh_march(vec3 origin, vec3 direction, float radius) {
+float atmosphere_march(vec3 origin, vec3 direction, float radius) {
 	// origin - earth center
 	vec3 v = origin - earth_center;
 	float b = dot(v, direction);
@@ -253,7 +257,7 @@ float rayleigh_march(vec3 origin, vec3 direction, float radius) {
 	return (r1 >= 0.) ? r1 : r2;
 }
 
-vec3 rayleigh_scatter(vec3 direction, float l) {
+vec3 atmosphere_scatter(vec3 direction, float l) {
 	// scatter in
 	vec2 total_depth = vec2(0.0);
 	vec3 intensity_rayleigh = vec3(0.0);
@@ -265,18 +269,18 @@ vec3 rayleigh_scatter(vec3 direction, float l) {
 		// iterate point
 		for (int i = 0; i < SCATTER_IN_STEP; ++i) {
 			vec3 point = camera_location + direction_sin * i;		
-			vec2 depth = rayleigh_density(point) * l_sin;
+			vec2 depth = atmosphere_density(point) * l_sin;
 			total_depth += depth;
 
 			// calculate scatter depth
-			float l_sde = rayleigh_march(point, sun_direction, radius_atmosphere);
+			float l_sde = atmosphere_march(point, sun_direction, radius_atmosphere);
 			vec2 depth_accumulation = vec2(0.0);
 			{
 				l_sde /= SCATTER_DEPTH_STEP;
 				vec3 direction_sde = sun_direction * l_sde;
 				// iterate point
 				for (int j = 0; j < SCATTER_DEPTH_STEP; ++j) {
-					depth_accumulation += rayleigh_density(point + direction_sde * j);
+					depth_accumulation += atmosphere_density(point + direction_sde * j);
 				}
 				depth_accumulation *= l_sde;
 			}
@@ -292,12 +296,5 @@ vec3 rayleigh_scatter(vec3 direction, float l) {
 
 	float mu = dot(direction, normalize(sun_direction));
 
-	// lo extinction
-	return sqrt(
-		//lo * exp(-rayleigh_coefficient * total_depth.x - mie_coefficient_upper * total_depth.y) // cancels to zero because of color == vec3(0.0)
-		//+
-		sun_intensity * (1.0 + mu * mu)
-		*
-		(intensity_rayleigh * rayleigh_coefficient * 0.0597 + intensity_mie * mie_coefficient_lower * 0.0196 / pow(1.58 - 1.52 * mu, 1.5)
-	));
+	return sqrt(sun_intensity * (1.0 + mu * mu) * (intensity_rayleigh * rayleigh_coefficient * 0.0597 + intensity_mie * mie_coefficient_lower * 0.0196 / pow(1.58 - 1.52 * mu, 1.5)));
 }

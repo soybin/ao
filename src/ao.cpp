@@ -61,11 +61,14 @@ int main(int argc, char* argv[]) {
 	int millis_per_frame = 1000 / fps;
 	// noise / clouds
 	int cloud_volume_samples = 32;
-	int cloud_in_scatter_samples = 32;
+	int cloud_in_scatter_samples = 8;
 	float cloud_shadowing_threshold = 0.2f;
 	float cloud_absorption = 0.2f;
 	float cloud_density_threshold = 0.72f;
 	float cloud_density_multiplier = 5.0f;
+	float cloud_noise_main_scale = 0.1f;
+	float cloud_noise_detail_scale = 5.0f;
+	float cloud_noise_detail_weight = 0.1f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
 	float cloud_location[3] = { 0.0f, 10.0f, 0.0f };
 	float cloud_volume[3] = { 20.0f, 2.0f, 20.0f };
@@ -101,7 +104,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
+	glfwSwapInterval(10);
 
 	// ---- init glew ---- //
 
@@ -176,15 +179,14 @@ int main(int argc, char* argv[]) {
 	update_noise(compute_shader, 0.6f, lowres_noise_resolution, 2, 4, 5, 'R');
 
 	main_shader->bind();
-	main_shader->set1i("lowres_noise_texture", lowres_noise_id);
+	main_shader->set1i("detail_noise_texture", lowres_noise_id);
 
 	glEnable(GL_TEXTURE_3D);
 
 	// ---- noise ---- highres ---- //
 
-	float noise_zoom = 0.25f;
 	unsigned int highres_noise_id;
-	unsigned int highres_noise_resolution = 256;
+	unsigned int highres_noise_resolution = 512;
 
 	glGenTextures(1, &highres_noise_id);
 	glActiveTexture(GL_TEXTURE0 + highres_noise_id);
@@ -201,7 +203,7 @@ int main(int argc, char* argv[]) {
 	update_noise(compute_shader, 0.8f, highres_noise_resolution, 2, 4, 5, 'R');
 
 	main_shader->bind();
-	main_shader->set1i("highres_noise_texture", highres_noise_id);
+	main_shader->set1i("main_noise_texture", highres_noise_id);
 
 	// ---- work ---- //
 
@@ -238,10 +240,6 @@ int main(int argc, char* argv[]) {
 				}
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("noise")) {
-				ImGui::InputFloat("zoom", &noise_zoom);
-				ImGui::EndTabItem();
-			}
 			if (ImGui::BeginTabItem("sky")) {
 				// physically accurate sky or just bg color?
 				ImGui::Checkbox("render sky", &render_sky);
@@ -260,6 +258,9 @@ int main(int argc, char* argv[]) {
 				ImGui::InputFloat3("location", &cloud_location[0]);
 				ImGui::InputFloat3("volume", &cloud_volume[0]);
 				ImGui::Text("advanced parameters");
+				ImGui::SliderFloat("main noise scale", &cloud_noise_main_scale, 0.0f, 1.0f);
+				ImGui::SliderFloat("detail noise scale", &cloud_noise_detail_scale, 1.0f, 10.0f);
+				ImGui::SliderFloat("detail noise weight", &cloud_noise_detail_weight, 0.0f, 1.0f);
 				ImGui::SliderInt("samples per volume ray", &cloud_volume_samples, 32, 128);
 				ImGui::SliderInt("samples per in scatter light ray", &cloud_in_scatter_samples, 8, 64);
 				ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
@@ -292,8 +293,7 @@ int main(int argc, char* argv[]) {
 		if (time > 12.0f) {
 			sun_y = 2.0f - sun_y;
 		}
-		glm::vec3 sunpos = glm::normalize(glm::vec3(0.0f, sun_y, sun_z));
-		std::cout << sunpos.y << " | " << sunpos.z << std::endl;
+
 		// compute angles
 		glm::mat4 view = view_matrix;
 		view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -313,6 +313,9 @@ int main(int argc, char* argv[]) {
 		// cloud
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
 		main_shader->set1f("cloud_shadowing_threshold", cloud_shadowing_threshold);
+		main_shader->set1f("cloud_noise_main_scale", cloud_noise_main_scale);
+		main_shader->set1f("cloud_noise_detail_scale", cloud_noise_detail_scale);
+		main_shader->set1f("cloud_noise_detail_weight", cloud_noise_detail_weight);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
 		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
@@ -321,9 +324,6 @@ int main(int argc, char* argv[]) {
 
 		// wind
 		main_shader->set3f("wind_direction", wind_direction[0], wind_direction[1], wind_direction[2]);
-
-		// noise
-		main_shader->set1f("noise_zoom", noise_zoom);
 
 		// skydome
 		main_shader->set1i("render_sky", render_sky);
