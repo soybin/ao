@@ -43,6 +43,12 @@ struct cloud {
 
 // -------- 青 一 a o -------- //
 
+unsigned int cursor_old_x = 0;
+unsigned int cursor_old_y = 0;
+int cursor_delta_x = 0;
+int cursor_delta_y = 0;
+void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+
 int main(int argc, char* argv[]) {
 
 	// ---- init ao data ---- //
@@ -81,7 +87,7 @@ int main(int argc, char* argv[]) {
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	float camera_pitch = 90.0f;
+	float camera_pitch = 30.0f;
 	float camera_yaw = 0.0f;
 
 	// ---- init glfw ---- //
@@ -104,7 +110,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(10);
+	glfwSwapInterval(1);
+
+	// set cursor position callback function up
+	glfwSetCursorPosCallback(window, cursor_position_callback);
 
 	// ---- init glew ---- //
 
@@ -186,7 +195,7 @@ int main(int argc, char* argv[]) {
 	// ---- noise ---- highres ---- //
 
 	unsigned int highres_noise_id;
-	unsigned int highres_noise_resolution = 512;
+	unsigned int highres_noise_resolution = 256;
 
 	glGenTextures(1, &highres_noise_id);
 	glActiveTexture(GL_TEXTURE0 + highres_noise_id);
@@ -222,9 +231,12 @@ int main(int argc, char* argv[]) {
 			continue;
 		}
 
-		// draw shader to screen
-		glBindVertexArray(vao);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+		// draw fragment to screen if required to.
+		// otherwise, draw last fragment
+		if (frame % 1 == 0) {
+			glBindVertexArray(vao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
 
 		// draw imgui
 		ImGui_ImplOpenGL3_NewFrame();
@@ -278,6 +290,26 @@ int main(int argc, char* argv[]) {
 				ImGui::EndTabItem();
 			}
 			ImGui::EndTabBar();
+		}
+
+		// check for mouse drag input (don't move this block of code out of imgui rendering scope)
+		if (!ImGui::IsWindowFocused() && (cursor_delta_x || cursor_delta_y)) {
+			std::cout << cursor_delta_x << "  " << cursor_delta_y << std::endl;
+			camera_yaw += cursor_delta_x;
+			camera_pitch += cursor_delta_y;
+			// make sure there's no excess rotation
+			if (camera_yaw > 360) {
+				camera_yaw -= 360;
+			} else if (camera_yaw < 0) {
+				camera_yaw += 360;
+			}
+			if (camera_pitch > 360) {
+				camera_pitch -= 360;
+			} else if (camera_pitch < 0) {
+				camera_pitch += 360;
+			}
+			cursor_delta_x = 0;
+			cursor_delta_y = 0;
 		}
 
 		// render gui to frame
@@ -345,10 +377,20 @@ int main(int argc, char* argv[]) {
 
 	glfwTerminate();
 
-	delete compute_shader;;
+	delete compute_shader;
 	delete main_shader;
 
 	return 0;
+}
+
+// cursor logic
+void cursor_position_callback(GLFWwindow* window, double x, double y) {
+	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+		cursor_delta_x = x - cursor_old_x;
+		cursor_delta_y = y - cursor_old_y;
+		cursor_old_x = x;
+		cursor_old_y = y;
+  }
 }
 
 // -------------------------------- //
