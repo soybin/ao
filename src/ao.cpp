@@ -43,8 +43,8 @@ struct cloud {
 
 // -------- 青 一 a o -------- //
 
-unsigned int cursor_old_x = 0;
-unsigned int cursor_old_y = 0;
+int cursor_old_x = 0;
+int cursor_old_y = 0;
 int cursor_delta_x = 0;
 int cursor_delta_y = 0;
 void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
 	int fullscreen = 0;
 	int width = 1280;
 	int height = 720;
-	int cursor_sensitivity = 2;
+	float cursor_sensitivity = 5.0f;
 	unsigned int vao;
 	unsigned int vbo;
 	shader* compute_shader;
@@ -248,10 +248,8 @@ int main(int argc, char* argv[]) {
 		ImGui::NewFrame();
 
 		ImGui::ShowDemoWindow();
-		imgui_window_is_focused |= ImGui::IsWindowFocused();
 
-		bool ye = false;
-		ImGui::Begin("clouds", &ye, ImGuiWindowFlags_NoTitleBar);
+		ImGui::Begin("clouds", NULL, 0);
 
 		if (ImGui::CollapsingHeader("noise")) {
 		}
@@ -312,19 +310,18 @@ int main(int argc, char* argv[]) {
 
 		// check for mouse drag input (don't move this block of code out of imgui rendering scope)
 		if (!imgui_window_is_focused && (cursor_delta_x || cursor_delta_y)) {
-			std::cout << cursor_delta_x << "  " << cursor_delta_y << std::endl;
-			camera_yaw += cursor_delta_x;
-			camera_pitch += cursor_delta_y;
+			camera_yaw += (float)cursor_delta_x * cursor_sensitivity / 10.0f;
+			camera_pitch += (float)cursor_delta_y * cursor_sensitivity / 10.0f;
 			// make sure there's no excess rotation
-			if (camera_yaw > 360) {
-				camera_yaw -= 360;
-			} else if (camera_yaw < 0) {
-				camera_yaw += 360;
+			if (camera_yaw > 360.0f) {
+				camera_yaw -= 360.0f;
+			} else if (camera_yaw < 0.0f) {
+				camera_yaw += 360.0f;
 			}
-			if (camera_pitch > 360) {
-				camera_pitch -= 360;
-			} else if (camera_pitch < 0) {
-				camera_pitch += 360;
+			if (camera_pitch > 360.0f) {
+				camera_pitch -= 360.0f;
+			} else if (camera_pitch < 0.0f) {
+				camera_pitch += 360.0f;
 			}
 			cursor_delta_x = 0;
 			cursor_delta_y = 0;
@@ -404,11 +401,11 @@ int main(int argc, char* argv[]) {
 // cursor logic
 void cursor_position_callback(GLFWwindow* window, double x, double y) {
 	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-		cursor_delta_x = x - cursor_old_x;
-		cursor_delta_y = y - cursor_old_y;
-		cursor_old_x = x;
-		cursor_old_y = y;
-  }
+		cursor_delta_x = (int)x - cursor_old_x;
+		cursor_delta_y = (int)y - cursor_old_y;
+	}
+	cursor_old_x = (int)x;
+	cursor_old_y = (int)y;
 }
 
 // -------------------------------- //
