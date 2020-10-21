@@ -57,6 +57,7 @@ int main(int argc, char* argv[]) {
 	int fullscreen = 0;
 	int width = 1280;
 	int height = 720;
+	int cursor_sensitivity = 2;
 	unsigned int vao;
 	unsigned int vbo;
 	shader* compute_shader;
@@ -238,10 +239,26 @@ int main(int argc, char* argv[]) {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
 
+		// check for ever rendered window
+		bool imgui_window_is_focused = false;
+
 		// draw imgui
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+
+		ImGui::ShowDemoWindow();
+		imgui_window_is_focused |= ImGui::IsWindowFocused();
+
+		bool ye = false;
+		ImGui::Begin("clouds", &ye, ImGuiWindowFlags_NoTitleBar);
+
+		if (ImGui::CollapsingHeader("noise")) {
+		}
+
+		imgui_window_is_focused |= ImGui::IsWindowFocused();
+		ImGui::End();
+
 
 		// get gui input
 		if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_None)) {
@@ -291,9 +308,10 @@ int main(int argc, char* argv[]) {
 			}
 			ImGui::EndTabBar();
 		}
+		imgui_window_is_focused |= ImGui::IsWindowFocused();
 
 		// check for mouse drag input (don't move this block of code out of imgui rendering scope)
-		if (!ImGui::IsWindowFocused() && (cursor_delta_x || cursor_delta_y)) {
+		if (!imgui_window_is_focused && (cursor_delta_x || cursor_delta_y)) {
 			std::cout << cursor_delta_x << "  " << cursor_delta_y << std::endl;
 			camera_yaw += cursor_delta_x;
 			camera_pitch += cursor_delta_y;
