@@ -29,7 +29,8 @@
  * worley noise function:
  * persistance = noisy doisy
  */
-void update_noise(shader* compute, float persistance, int resolution, int subdivisions_a, int subdivisions_b, int subdivisions_c, char channel);
+
+void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
 
 // -------- c l o u d s --------//
 
@@ -168,52 +169,22 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
-
-	// ---- noise ---- lowres ----- // 
-	
-	unsigned int lowres_noise_id;
-	unsigned int lowres_noise_resolution = 32;
-
-	glGenTextures(1, &lowres_noise_id);
-	glActiveTexture(GL_TEXTURE0 + lowres_noise_id);
-	glBindTexture(GL_TEXTURE_3D, lowres_noise_id);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, lowres_noise_resolution, lowres_noise_resolution, lowres_noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindImageTexture(0, lowres_noise_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
-
-	// build noise texture on compute shader
-	update_noise(compute_shader, 0.6f, lowres_noise_resolution, 2, 4, 5, 'R');
-
-	main_shader->bind();
-	main_shader->set1i("detail_noise_texture", lowres_noise_id);
-
+	// ---- noise ---- //
 	glEnable(GL_TEXTURE_3D);
 
-	// ---- noise ---- highres ---- //
-
-	unsigned int highres_noise_id;
-	unsigned int highres_noise_resolution = 256;
-
-	glGenTextures(1, &highres_noise_id);
-	glActiveTexture(GL_TEXTURE0 + highres_noise_id);
-	glBindTexture(GL_TEXTURE_3D, highres_noise_id);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, highres_noise_resolution, highres_noise_resolution, highres_noise_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindImageTexture(0, highres_noise_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
-
-	// build noise texture on compute shader
-	update_noise(compute_shader, 0.8f, highres_noise_resolution, 2, 4, 5, 'R');
-
+	// main
+	unsigned int main_noise_id;
+	int main_noise_resolution = 256;
+	bake_noise(main_noise_id, compute_shader, main_noise_resolution, 0.8f, 2, 4, 5);
 	main_shader->bind();
-	main_shader->set1i("main_noise_texture", highres_noise_id);
+	main_shader->set1i("main_noise_texture", main_noise_id);
+
+	// detail
+	unsigned int detail_noise_id;
+	int detail_noise_resolution = 32;
+	bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, 0.6f, 2, 4, 5);
+	main_shader->bind();
+	main_shader->set1i("detail_noise_texture", detail_noise_id);
 
 	// ---- work ---- //
 
@@ -249,9 +220,17 @@ int main(int argc, char* argv[]) {
 
 		ImGui::ShowDemoWindow();
 
+		// clouds settings
 		ImGui::Begin("clouds", NULL, 0);
 
 		if (ImGui::CollapsingHeader("noise")) {
+			ImGui::Text("main noise");
+			ImGui::Text("detail noise");
+			ImGui::InputInt("resolution", &detail_noise_resolution);
+			if (ImGui::Button("bake detail noise")) {
+				bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, 0.6f, 2, 4, 5);
+				main_shader->set1i("detail_noise_texture", detail_noise_id);
+			}
 		}
 
 		imgui_window_is_focused |= ImGui::IsWindowFocused();
@@ -437,7 +416,22 @@ void compute_worley_grid(glm::vec4* points, int subdivision) {
 	}
 }
 
-void update_noise(shader* compute, float persistance, int resolution, int subdivisions_a, int subdivisions_b, int subdivisions_c, char channel) {
+void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c) {
+	// first time generating texture
+	//glBindTexture(GL_TEXTURE_3D, 0);
+	//glDeleteTextures(1, &texture_id);
+	glGenTextures(1, &texture_id);
+	std::cout << texture_id << std::endl;
+	glActiveTexture(GL_TEXTURE0 + texture_id);
+	glBindTexture(GL_TEXTURE_3D, texture_id);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, resolution, resolution, resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, texture_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+
 	// lay random points per each cell in
 	// the grid.
 	// for each layer
@@ -453,7 +447,7 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 	compute->set1i("output_texture", 0);
 	compute->set1i("resolution", resolution);
 	compute->set1f("persistance", persistance);
-	compute->set4i("channel_mask", channel == 'R', channel == 'G', channel == 'B', channel == 'A');
+	compute->set4i("channel_mask", 1, 0, 0, 0);
 	compute->set1i("subdivisions_a", subdivisions_a);
 	compute->set1i("subdivisions_b", subdivisions_b);
 	compute->set1i("subdivisions_c", subdivisions_c);
@@ -487,4 +481,9 @@ void update_noise(shader* compute, float persistance, int resolution, int subdiv
 
 	// wait till finished
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+	// delete buffers
+	glDeleteBuffers(1, &ssbo_a);
+	glDeleteBuffers(1, &ssbo_b);
+	glDeleteBuffers(1, &ssbo_c);
 }
