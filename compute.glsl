@@ -1,6 +1,6 @@
 #version 430
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-layout(rgba8, location = 0) uniform image3D output_texture;
+layout(r8, location = 0) uniform image3D output_texture;
 
 // point grid buffers (SSBOs)
 layout(std430, binding = 1) buffer points_a {
@@ -20,8 +20,6 @@ layout(std430, binding = 3) buffer points_c {
 uniform int resolution = 256;
 // tex + persistance * tex2 + persistance^2 * tex2
 uniform float persistance = 0.0;
-// to change working channel
-uniform ivec4 channel_mask = ivec4(0, 0, 0, 0);
 // voronoi grid random points.
 // 3 channels.
 uniform int subdivisions_a = 8;
@@ -125,8 +123,6 @@ void main() {
 	noise_sum = 1.0 - noise_sum;
 	// accentuate dark tones
 	noise_sum = noise_sum * noise_sum; // noise_sum^2
-	// apply mask
-	vec4 result = channel_mask * noise_sum;
 	// write to texture
-	imageStore(output_texture, ivec3(gl_GlobalInvocationID), result);
+	imageStore(output_texture, ivec3(gl_GlobalInvocationID), vec4(noise_sum));
 }

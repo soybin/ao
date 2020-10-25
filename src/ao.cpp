@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
+	glfwSwapInterval(5);
 
 	// set cursor position callback function up
 	glfwSetCursorPosCallback(window, cursor_position_callback);
@@ -175,14 +175,22 @@ int main(int argc, char* argv[]) {
 	// main
 	unsigned int main_noise_id;
 	int main_noise_resolution = 256;
-	bake_noise(main_noise_id, compute_shader, main_noise_resolution, 0.8f, 2, 4, 5);
+	int main_noise_subdivisions_a = 3;
+	int main_noise_subdivisions_b = 6;
+	int main_noise_subdivisions_c = 9;
+	float main_noise_persistence = 0.8f;
+	bake_noise(main_noise_id, compute_shader, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("main_noise_texture", main_noise_id);
 
 	// detail
 	unsigned int detail_noise_id;
 	int detail_noise_resolution = 32;
-	bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, 0.6f, 2, 4, 5);
+	int detail_noise_subdivisions_a = 2;
+	int detail_noise_subdivisions_b = 4;
+	int detail_noise_subdivisions_c = 6;
+	float detail_noise_persistence = 0.6f;
+	bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("detail_noise_texture", detail_noise_id);
 
@@ -192,7 +200,7 @@ int main(int argc, char* argv[]) {
 
 	for (unsigned long long frame = 0; run; ++frame) {
 
-		millis_start= std::chrono::system_clock::now();
+		millis_start = std::chrono::system_clock::now();
 
 		glClearColor(0.0f, 0.0f, 0.0f, 1.00f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -224,11 +232,31 @@ int main(int argc, char* argv[]) {
 		ImGui::Begin("clouds", NULL, 0);
 
 		if (ImGui::CollapsingHeader("noise")) {
+			ImGui::Text("juxtaposed worley layers");
+			ImGui::Separator();
 			ImGui::Text("main noise");
+			ImGui::InputInt("resolution(% 8 == 0)##1", &main_noise_resolution);
+			ImGui::InputInt("first layer subdivisions##1", &main_noise_subdivisions_a);
+			ImGui::InputInt("second layer subdivisions##1", &main_noise_subdivisions_b);
+			ImGui::InputInt("third layer subdivisions##1", &main_noise_subdivisions_c);
+			ImGui::SliderFloat("layer mix persistence##1", &main_noise_persistence, 0.0f, 1.0f);
+			if (ImGui::Button("rebake##1")) {
+				main_shader->unbind();
+				bake_noise(main_noise_id, compute_shader, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
+				main_shader->bind();
+				main_shader->set1i("main_noise_texture", main_noise_id);
+			}
+			ImGui::Separator();
 			ImGui::Text("detail noise");
-			ImGui::InputInt("resolution", &detail_noise_resolution);
-			if (ImGui::Button("bake detail noise")) {
-				bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, 0.6f, 2, 4, 5);
+			ImGui::InputInt("resolution (% 8 == 0)##2", &detail_noise_resolution);
+			ImGui::InputInt("first layer subdivisions##2", &detail_noise_subdivisions_a);
+			ImGui::InputInt("second layer subdivisions##2", &detail_noise_subdivisions_b);
+			ImGui::InputInt("third layer subdivisions##2", &detail_noise_subdivisions_c);
+			ImGui::SliderFloat("layer mix persistence##2", &detail_noise_persistence, 0.0f, 1.0f);
+			if (ImGui::Button("rebake##2")) {
+				main_shader->unbind();
+				bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
+				main_shader->bind();
 				main_shader->set1i("detail_noise_texture", detail_noise_id);
 			}
 		}
@@ -387,14 +415,6 @@ void cursor_position_callback(GLFWwindow* window, double x, double y) {
 	cursor_old_y = (int)y;
 }
 
-// -------------------------------- //
-// -------- user interface -------- //
-// -------------------------------- //
-
-inline void update_ui() {
-
-}
-
 // ------------------------------- //
 // -------- noise texture -------- //
 // ------------------------------- //
@@ -418,10 +438,11 @@ void compute_worley_grid(glm::vec4* points, int subdivision) {
 
 void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c) {
 	// first time generating texture
-	//glBindTexture(GL_TEXTURE_3D, 0);
-	//glDeleteTextures(1, &texture_id);
+	if (glIsTexture(texture_id)) {
+		glDeleteTextures(1, &texture_id);
+		std::cout << "[+] baking new noise texture" << std::endl;
+	}
 	glGenTextures(1, &texture_id);
-	std::cout << texture_id << std::endl;
 	glActiveTexture(GL_TEXTURE0 + texture_id);
 	glBindTexture(GL_TEXTURE_3D, texture_id);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -429,8 +450,8 @@ void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, resolution, resolution, resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindImageTexture(0, texture_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, resolution, resolution, resolution, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, texture_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R8);
 
 	// lay random points per each cell in
 	// the grid.
