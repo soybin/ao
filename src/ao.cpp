@@ -12,6 +12,8 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <vector>
+#include <map>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -33,6 +35,9 @@
 void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
 
 // -------- c l o u d s --------//
+
+const char* cloud_models[] = { "Custom", "Cumulus", "Stratocumulus", "Stratus", "Cumulonimbus", "Altomumulus", "Cirrostratus", "Cirrocumulus", "Cirrus" };
+static const char* cloud_model_current = "Cumulus";
 
 struct cloud {
 	int altitude;
@@ -112,7 +117,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(5);
+	glfwSwapInterval(1);
 
 	// set cursor position callback function up
 	glfwSetCursorPosCallback(window, cursor_position_callback);
@@ -145,8 +150,43 @@ int main(int argc, char* argv[]) {
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 430");
 
-	// change color theme
-	ImGui::StyleColorsDark();
+	// load custom theme
+  ImGuiStyle& style = ImGui::GetStyle();
+	style.FramePadding.x = 4.0F;
+	style.FramePadding.y = 4.0f;
+	style.WindowPadding.x = 10.0f;
+	style.WindowPadding.y = 10.0f;
+	style.GrabMinSize = 20.0f;
+	style.ScrollbarSize = 20.0f;
+	style.WindowBorderSize = 0.0f;
+	style.FrameBorderSize = 0.0f;
+	style.PopupBorderSize = 0.0f;
+	style.WindowRounding = 10.0f;
+	style.ChildRounding = 10.0f;
+	style.FrameRounding = 10.0f;
+	style.PopupRounding = 10.0f;
+	style.ScrollbarRounding = 10.0f;
+	style.GrabRounding = 10.0f;
+	style.WindowTitleAlign.x = 0.5f;
+	style.WindowTitleAlign.y = 0.5f;
+	// color palette
+	{
+		// key: color, data: imgui color indexes to apply to
+		std::map<std::vector<int>, std::vector<int>> colors;
+		colors[{ 56, 25, 40 }] = { 26, 9, 18, 20, 23}; // dark non-text
+		colors[{ 40, 52, 62 }] = { 0 }; // dark text
+		colors[{ 252, 177, 166 }] = { 2, 7 }; // light
+		colors[{ 255, 220, 204 }] = { 8, 11, 19, 21, 24}; // lighter
+		colors[{ 255, 249, 236 }] = { 9, 10, 22, 25}; // even lighter
+		for (auto& [color, indices] : colors) {
+			for (auto& index : indices) {
+				style.Colors[index].x = (float)color[0] / 255.0f;
+				style.Colors[index].y = (float)color[1] / 255.0f;
+				style.Colors[index].z = (float)color[2] / 255.0f;
+				style.Colors[index].w = 0.95f;
+			}
+		}
+	}
 
 	// ---- load quad ---- //
 
@@ -174,7 +214,7 @@ int main(int argc, char* argv[]) {
 
 	// main
 	unsigned int main_noise_id;
-	int main_noise_resolution = 256;
+	int main_noise_resolution = 128;
 	int main_noise_subdivisions_a = 3;
 	int main_noise_subdivisions_b = 6;
 	int main_noise_subdivisions_c = 9;
@@ -231,9 +271,22 @@ int main(int argc, char* argv[]) {
 		// clouds settings
 		ImGui::Begin("clouds", NULL, 0);
 
+		ImGui::Text("cloud model preset");
+		if (ImGui::BeginCombo("##cloud model", cloud_model_current)) {
+			for (int n = 0; n < IM_ARRAYSIZE(cloud_models); ++n) {
+				bool is_selected = (cloud_model_current == cloud_models[n]);
+				if (ImGui::Selectable(cloud_models[n], is_selected)) {
+					cloud_model_current = cloud_models[n];
+				}
+				if (is_selected) {
+					ImGui::SetItemDefaultFocus();	
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::Separator();
+
 		if (ImGui::CollapsingHeader("noise")) {
-			ImGui::Text("juxtaposed worley layers");
-			ImGui::Separator();
 			ImGui::Text("main noise");
 			ImGui::InputInt("resolution(% 8 == 0)##1", &main_noise_resolution);
 			ImGui::InputInt("first layer subdivisions##1", &main_noise_subdivisions_a);
@@ -468,7 +521,6 @@ void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float
 	compute->set1i("output_texture", 0);
 	compute->set1i("resolution", resolution);
 	compute->set1f("persistance", persistance);
-	compute->set4i("channel_mask", 1, 0, 0, 0);
 	compute->set1i("subdivisions_a", subdivisions_a);
 	compute->set1i("subdivisions_b", subdivisions_b);
 	compute->set1i("subdivisions_c", subdivisions_c);

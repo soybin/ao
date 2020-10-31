@@ -17,14 +17,14 @@ layout(std430, binding = 3) buffer points_c {
 
 // ---- vars ---- //
 // per axis resolution of the texture
-uniform int resolution = 256;
+uniform int resolution;
 // tex + persistance * tex2 + persistance^2 * tex2
-uniform float persistance = 0.0;
+uniform float persistance;
 // voronoi grid random points.
 // 3 channels.
-uniform int subdivisions_a = 8;
-uniform int subdivisions_b = 12;
-uniform int subdivisions_c = 16;
+uniform int subdivisions_a;
+uniform int subdivisions_b;
+uniform int subdivisions_c;
 
 int min_component(ivec3 x) {
 	return min(x.x, min(x.y, x.z));
