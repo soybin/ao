@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
 
 	// load custom theme
   ImGuiStyle& style = ImGui::GetStyle();
-	style.FramePadding.x = 4.0F;
+	style.FramePadding.x = 4.0f;
 	style.FramePadding.y = 4.0f;
 	style.WindowPadding.x = 10.0f;
 	style.WindowPadding.y = 10.0f;
@@ -171,13 +171,41 @@ int main(int argc, char* argv[]) {
 	style.WindowTitleAlign.y = 0.5f;
 	// color palette
 	{
+		// indexes for colors imgui:
+		// 0 - text
+		// 1 - text disabled
+		// 2 - window bg
+		// 7 - frame bg
+		// 8 - frame bg hovered
+		// 9 - frame bg active
+		// 10 - title bg
+		// 11 - title bg active
+		// 12 - title bg collapsed
+		// 15 - scrollbar grab
+		// 16 - scrollbar grab hovered
+		// 17 - scrollbar grab active
+		// 18 - checkmark
+		// 19 - slider grab
+		// 20 - slider grab active
+		// 21 - button
+		// 22 - button hovered
+		// 23 - button active
+		// 24 - header 
+		// 25 - header hovered
+		// 26 - header active
+		// 27 - separator
+		// 28 - separator hovered
+		// 29 - separator active
+		// 30 - resize grip
+		// 31 - resize grip hovered
+		// 32 - resize grip active
 		// key: color, data: imgui color indexes to apply to
 		std::map<std::vector<int>, std::vector<int>> colors;
-		colors[{ 56, 25, 40 }] = { 26, 9, 18, 20, 23}; // dark non-text
-		colors[{ 40, 52, 62 }] = { 0 }; // dark text
-		colors[{ 252, 177, 166 }] = { 2, 7 }; // light
-		colors[{ 255, 220, 204 }] = { 8, 11, 19, 21, 24}; // lighter
-		colors[{ 255, 249, 236 }] = { 9, 10, 22, 25}; // even lighter
+		colors[{ 0, 50, 73 }] = { 0 }; // dark - text
+		colors[{ 0, 126, 167 }] = { 23 };//{ 23, 26, 9, 18, 20, 23}; // light - click
+		colors[{ 128, 206, 215 }] = { 21 }; // lighter - background
+		colors[{ 154, 209, 212 }] = { 7, 22, 2, 8, 11, 19, 24}; // even lighter - buttons
+		colors[{ 204, 219, 220 }] = { 2, 10 }; // even lighter - background
 		for (auto& [color, indices] : colors) {
 			for (auto& index : indices) {
 				style.Colors[index].x = (float)color[0] / 255.0f;
