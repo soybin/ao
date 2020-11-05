@@ -175,12 +175,16 @@ int main(int argc, char* argv[]) {
 		// 0 - text
 		// 1 - text disabled
 		// 2 - window bg
+		// 3 - child bg
+		// 4 - popup bg
 		// 7 - frame bg
 		// 8 - frame bg hovered
 		// 9 - frame bg active
 		// 10 - title bg
 		// 11 - title bg active
 		// 12 - title bg collapsed
+		// 13 - menu bar bg
+		// 14 - scrollbar bg
 		// 15 - scrollbar grab
 		// 16 - scrollbar grab hovered
 		// 17 - scrollbar grab active
@@ -201,11 +205,12 @@ int main(int argc, char* argv[]) {
 		// 32 - resize grip active
 		// key: color, data: imgui color indexes to apply to
 		std::map<std::vector<int>, std::vector<int>> colors;
-		colors[{ 0, 50, 73 }] = { 0 }; // dark - text
-		colors[{ 0, 126, 167 }] = { 23 };//{ 23, 26, 9, 18, 20, 23}; // light - click
-		colors[{ 128, 206, 215 }] = { 21 }; // lighter - background
-		colors[{ 154, 209, 212 }] = { 7, 22, 2, 8, 11, 19, 24}; // even lighter - buttons
-		colors[{ 204, 219, 220 }] = { 2, 10 }; // even lighter - background
+		// color palette: https://coolors.co/2b2628-f4978e-f8ad9d-fbc4ab-ffdab9
+		colors[{ 43, 38, 40 }]    = { 0, 1 }; // dark - text
+		colors[{ 255, 218, 185 }] = { 2, 13, 14, 18 }; // light - backgrounds - special features
+		colors[{ 251, 196, 171}]  = { 3, 4, 7, 10, 15, 20, 21, 24, 27, 30 }; // a bit light - default
+		colors[{ 248, 173, 157 }] = {       8, 11, 16    , 22, 25, 28, 31 }; // medium - hovered
+		colors[{ 244, 151, 142}]  = {       9, 12, 17, 19, 23, 26, 29, 32 }; // a bit dark - pressed
 		for (auto& [color, indices] : colors) {
 			for (auto& index : indices) {
 				style.Colors[index].x = (float)color[0] / 255.0f;
