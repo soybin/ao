@@ -4,6 +4,11 @@
  */
 
 /*
+ * beautiful papers that made this possible:
+ * https://is.muni.cz/th/d099f/thesis.pdf
+ *
+
+/*
  * this fragment shader is differentiated into two
  * sections; although both parts work to accomplish
  * the same goal-atmospheric scattering-the level
@@ -87,7 +92,7 @@ uniform sampler3D detail_noise_texture;
 
 // ---- clouds ---- declarations ---- //
 float mie_density(vec3 position);
-float beer_lambert(float x);
+float beer_powder(float x);
 float henyey_greenstein(float x, float y);
 float phase(float x);
 float mie_in_scatter(vec3 position);
@@ -128,22 +133,27 @@ void main() {
 	float distance_per_step = march.y / cloud_volume_samples;
 	float distance_travelled = 0.0;
 
+	// reflection cosine
+	float reflection_angle = dot(dir.xyz, sun_direction);
+
 	// if ray hits cloud, compute lighting through it
 
-	for (; distance_travelled < march.y; distance_travelled += distance_per_step) {
+	for (float accumulated_density = 0.0; distance_travelled < march.y; distance_travelled += distance_per_step) {
 		vec3 ray_position = camera_location + dir.xyz * (march.x + distance_travelled);
 		float density = mie_density(ray_position);
+		accumulated_density += density * distance_per_step;
 		if (density > 0.0) {
+			float energy = exp(-accumulated_density) * /*henyey_greenstein(0.98, reflection_angle) */ (1.0 - exp(-accumulated_density*2)) * cloud_absorption;// * henyey_greenstein(0.98, reflection_angle);
 			float light_transmittance = mie_in_scatter(ray_position);
-			light += density * distance_per_step * transmittance * light_transmittance;
-			transmittance *= exp(-density * distance_per_step * cloud_absorption);
-			if (transmittance < 0.001) {
+			light += density * distance_per_step * light_transmittance * energy;
+			transmittance = energy;
+			if (transmittance < 0.01) {
 				break;
 			}
 		}
 	}
 
-	vec3 color = (atmosphere_color * transmittance) + (light * cloud_color);
+	vec3 color = (light * cloud_color);
 
 	// return fragment color
 	out_color = vec4(color, 1.0);
@@ -160,10 +170,12 @@ float mie_density(vec3 position) {
 	vec3 uvw = position * cloud_noise_main_scale;
 	vec3 main_sample_location = uvw + wind_direction * time;
 
-	const float container_fade_distance = 100.0;
+	const float container_fade_distance = 1.0;
 	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
 	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
 	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
+
+	float height = (position.y - lower_bound.y) / cloud_volume.y;
 
 	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r;
 	float density = max(0.0, main_noise_fbm - cloud_density_threshold);
@@ -178,19 +190,23 @@ float mie_density(vec3 position) {
 	return 0.0;
 }
 
-float beer_lambert(float x) {
-	return exp(-x);
+// beer's-powder law ― (1.0 - e^(-2x)) * (e^(-x))
+// https://www.desmos.com/calculator/kpikmuykza
+float beer_powder(float x) {
+	//return exp(-x);
+	return (1.0 - exp(-x * 2)) * exp(-x);
 }
 
 // approximation of a mie phase function
 // -> due to mie scattering's complexity, 
 //    an approximation is used.
-// -> a cheaper alternative, if needed, 
-//    would be the Schlik phase function,
-//    which doesn't use pow()
-float henyey_greenstein(float x, float y) {
-	float y2 = y * y;
-	return (1.0 - y2) / (4 * PI * pow(1 + y2 - 2 * y * x, 1.5));
+// -> an even cheaper alternative, if 
+//    needed, is be the Schlik phase 
+//    function, which doesn't use powers.
+//
+float henyey_greenstein(float g, float alpha) {
+	float g2 = g * g;
+	return (1.0 - g2) / (4 * PI * pow(1 + g2 - 2 * g * alpha, 1.5));
 }
 
 // balanced blend
@@ -199,7 +215,7 @@ float phase(float x) {
 	float a = 1.0;
 	float b = 1.0;
 	float c = 1.0;
-	float d = 1.0;
+	float d = 0.2;
 	// blend between parameters
 	float blend = 0.5;
 	float hg_blend = henyey_greenstein(x, a) * (1.0 - blend) + henyey_greenstein(x, -b) * blend;
@@ -216,7 +232,7 @@ float mie_in_scatter(vec3 position) {
 		density += max(0.0, mie_density(position)) * step_size;
 		position += direction * step_size;
 	}
-	float transmittance = beer_lambert(density * cloud_absorption);
+	float transmittance = beer_powder(density * cloud_absorption);
 	return cloud_shadowing_threshold + transmittance * (1.0 - cloud_shadowing_threshold);
 }
 
