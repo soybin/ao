@@ -4,11 +4,6 @@
  */
 
 /*
- * beautiful papers that made this possible:
- * https://is.muni.cz/th/d099f/thesis.pdf
- *
-
-/*
  * this fragment shader is differentiated into two
  * sections; although both parts work to accomplish
  * the same goal-atmospheric scattering-the level
@@ -68,13 +63,14 @@ uniform vec2 resolution;
 uniform vec3 background_color;
 uniform vec3 box_size;
 uniform vec3 cloud_color;
-uniform vec3 sun_direction;
+uniform vec3 light_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
 uniform int cloud_volume_samples;
 uniform int cloud_in_scatter_samples;
-uniform float cloud_shadowing_threshold;
+uniform float cloud_shadowing_max_distance;
+uniform float cloud_shadowing_weight;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
@@ -83,7 +79,6 @@ uniform float cloud_noise_detail_scale;
 uniform float cloud_noise_detail_weight;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
-uniform vec3 cloud_directional_light;
 
 uniform vec3 wind_direction;
 
@@ -126,34 +121,28 @@ void main() {
 
 	// ---- mie ---- //
 	
-	float transmittance = 1.0; // transparent
-	vec3 light = vec3(0.0); // accumulated light
+	float transparency = 1.0; // transparent
+	vec3 cloud = vec3(0.0); // accumulated light
 	
 	vec2 march = ray_to_cloud(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
 	float distance_per_step = march.y / cloud_volume_samples;
 	float distance_travelled = 0.0;
 
 	// reflection cosine
-	float reflection_angle = dot(dir.xyz, sun_direction);
+	float reflection_angle = dot(dir.xyz, light_direction);
 
 	// if ray hits cloud, compute lighting through it
 
 	for (float accumulated_density = 0.0; distance_travelled < march.y; distance_travelled += distance_per_step) {
 		vec3 ray_position = camera_location + dir.xyz * (march.x + distance_travelled);
 		float density = mie_density(ray_position);
-		accumulated_density += density * distance_per_step;
-		if (density > 0.0) {
-			float energy = exp(-accumulated_density) * /*henyey_greenstein(0.98, reflection_angle) */ (1.0 - exp(-accumulated_density*2)) * cloud_absorption;// * henyey_greenstein(0.98, reflection_angle);
-			float light_transmittance = mie_in_scatter(ray_position);
-			light += density * distance_per_step * light_transmittance * energy;
-			transmittance = energy;
-			if (transmittance < 0.01) {
-				break;
-			}
-		}
+		transparency *= exp(-density * distance_per_step);
+		if (transparency < 0.01) break;
+		float in_light = mie_in_scatter(ray_position);
+		cloud += density * distance_per_step * in_light * transparency; //henyey_greenstein(-0.4, reflection_angle);
 	}
 
-	vec3 color = (light * cloud_color);
+	vec3 color = (transparency * atmosphere_color) + cloud;
 
 	// return fragment color
 	out_color = vec4(color, 1.0);
@@ -184,7 +173,7 @@ float mie_density(vec3 position) {
 		vec3 detail_sample_position = uvw * cloud_noise_detail_scale;
 		float detail_noise_fbm = texture(detail_noise_texture, detail_sample_position).r;
 		density -= detail_noise_fbm * cloud_noise_detail_weight;
-		return density * cloud_density_multiplier;
+		return max(0.0, density * cloud_density_multiplier);
 	}
 
 	return 0.0;
@@ -205,8 +194,7 @@ float beer_powder(float x) {
 //    function, which doesn't use powers.
 //
 float henyey_greenstein(float g, float alpha) {
-	float g2 = g * g;
-	return (1.0 - g2) / (4 * PI * pow(1 + g2 - 2 * g * alpha, 1.5));
+	return pow(1.0 - g, 3) / (4 * PI * pow(1 + g * g - 2 * g * alpha, 1.5));
 }
 
 // balanced blend
@@ -223,17 +211,16 @@ float phase(float x) {
 }
 
 float mie_in_scatter(vec3 position) {
-	vec3 direction = normalize(sun_direction);
-	float distance_inside_volume = ray_to_cloud(position, 1 / direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
-	float step_size = distance_inside_volume / cloud_in_scatter_samples;
-	position += direction * step_size * 0.5;
-	float density = 0.0;
+	float distance_inside_volume = ray_to_cloud(position, 1.0 / light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
+	distance_inside_volume = min(cloud_shadowing_max_distance, distance_inside_volume);
+	float step_size = distance_inside_volume / float(cloud_in_scatter_samples);
+	float transparency = 1.0; // transparent
+	float total_density = 0.0;
 	for (int i = 0; i < cloud_in_scatter_samples; ++i) {
-		density += max(0.0, mie_density(position)) * step_size;
-		position += direction * step_size;
+		total_density += (mie_density(position) * step_size);
+		position += light_direction * step_size;
 	}
-	float transmittance = beer_powder(density * cloud_absorption);
-	return cloud_shadowing_threshold + transmittance * (1.0 - cloud_shadowing_threshold);
+	return (1.0 - cloud_shadowing_weight) + exp(-total_density * cloud_absorption) * cloud_shadowing_weight;
 }
 
 // from
@@ -289,11 +276,11 @@ vec3 atmosphere_scatter(vec3 direction, float l) {
 			total_depth += depth;
 
 			// calculate scatter depth
-			float l_sde = atmosphere_march(point, sun_direction, radius_atmosphere);
+			float l_sde = atmosphere_march(point, light_direction, radius_atmosphere);
 			vec2 depth_accumulation = vec2(0.0);
 			{
 				l_sde /= SCATTER_DEPTH_STEP;
-				vec3 direction_sde = sun_direction * l_sde;
+				vec3 direction_sde = light_direction * l_sde;
 				// iterate point
 				for (int j = 0; j < SCATTER_DEPTH_STEP; ++j) {
 					depth_accumulation += atmosphere_density(point + direction_sde * j);
@@ -310,7 +297,7 @@ vec3 atmosphere_scatter(vec3 direction, float l) {
 		}
 	}
 
-	float mu = dot(direction, normalize(sun_direction));
+	float mu = dot(direction, light_direction);
 
 	return sqrt(sun_intensity * (1.0 + mu * mu) * (intensity_rayleigh * rayleigh_coefficient * 0.0597 + intensity_mie * mie_coefficient_lower * 0.0196 / pow(1.58 - 1.52 * mu, 1.5)));
 }

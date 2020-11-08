@@ -25,6 +25,8 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
+static void imgui_help_marker(const char* desc);
+
 // -------- n o i s e -------- //
 
 /*
@@ -75,8 +77,9 @@ int main(int argc, char* argv[]) {
 	// noise / clouds
 	int cloud_volume_samples = 32;
 	int cloud_in_scatter_samples = 8;
-	float cloud_shadowing_threshold = 0.2f;
-	float cloud_absorption = 0.2f;
+	float cloud_shadowing_max_distance = 5.0f;
+	float cloud_shadowing_weight = 0.9f;
+	float cloud_absorption = 0.1f;
 	float cloud_density_threshold = 0.72f;
 	float cloud_density_multiplier = 5.0f;
 	float cloud_noise_main_scale = 0.1f;
@@ -84,17 +87,19 @@ int main(int argc, char* argv[]) {
 	float cloud_noise_detail_weight = 0.1f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
 	float cloud_location[3] = { 0.0f, 10.0f, 0.0f };
-	float cloud_volume[3] = { 20.0f, 2.0f, 20.0f };
+	float cloud_volume[3] = { 30.0f, 3.0f, 30.0f };
 	// wind
-	float wind_direction[3] = {0.1f, 0.0f, 0.12f};
+	float wind_direction[3] = { 0.1f, 0.0f, 0.0f };
 	// skydome
 	bool render_sky = 1;
-	float time = 15.0f; // 6:00am - 18:00am
+	bool light_any_direction = 0;
+	float time = 15.0f; // 6:00am - 18:00pm
+	float light_direction[3] = { 0.0f, 0.707107f, 0.707107f };
 	float background_color[3] = { 0.0f, 0.0f, 0.0f };
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::mat4 view_matrix = glm::lookAt(camera_location, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	float camera_pitch = 30.0f;
+	float camera_pitch = 90.0f;
 	float camera_yaw = 0.0f;
 
 	// ---- init glfw ---- //
@@ -121,7 +126,6 @@ int main(int argc, char* argv[]) {
 
 	// set cursor position callback function up
 	glfwSetCursorPosCallback(window, cursor_position_callback);
-
 	// ---- init glew ---- //
 
 	if (glewInit() != GLEW_OK) {
@@ -291,19 +295,22 @@ int main(int argc, char* argv[]) {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
 
+		// --------------- //
+		// ---- imgui ---- //
+		// --------------- //
+
 		// check for ever rendered window
 		bool imgui_window_is_focused = false;
 
-		// draw imgui
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
 		ImGui::ShowDemoWindow();
 
-		// clouds settings
-		ImGui::Begin("clouds", NULL, 0);
+		// ---- clouds ---- //
 
+		ImGui::Begin("clouds", NULL, 0);
 		ImGui::Text("cloud model preset");
 		if (ImGui::BeginCombo("##cloud model", cloud_model_current)) {
 			for (int n = 0; n < IM_ARRAYSIZE(cloud_models); ++n) {
@@ -318,7 +325,27 @@ int main(int argc, char* argv[]) {
 			ImGui::EndCombo();
 		}
 		ImGui::Separator();
-
+		ImGui::Text("basic properties");
+		ImGui::Separator();
+		ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
+		ImGui::ColorEdit3("color", &cloud_color[0]);
+		ImGui::InputFloat3("location", &cloud_location[0]);
+		ImGui::InputFloat3("volume", &cloud_volume[0]);
+		ImGui::Separator();
+		ImGui::Text("shadowing");
+		ImGui::Separator();
+		ImGui::SliderFloat("weight", &cloud_shadowing_weight, 0.0f, 1.0f);
+		ImGui::InputFloat("maximum distance", &cloud_shadowing_max_distance);
+		ImGui::Separator();
+		ImGui::Text("rendering");
+		ImGui::Separator();
+		ImGui::SliderFloat("main noise scale", &cloud_noise_main_scale, 0.0f, 0.512f);
+		ImGui::SliderFloat("detail noise scale", &cloud_noise_detail_scale, 1.6f, 10.0f);
+		ImGui::SliderFloat("detail noise weight", &cloud_noise_detail_weight, 0.0f, 1.0f);
+		ImGui::SliderInt("volume samples", &cloud_volume_samples, 32, 128);
+		ImGui::SliderInt("in-scatter samples", &cloud_in_scatter_samples, 8, 64);
+		ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
+		ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
 		if (ImGui::CollapsingHeader("noise")) {
 			ImGui::Text("main noise");
 			ImGui::InputInt("resolution(% 8 == 0)##1", &main_noise_resolution);
@@ -350,8 +377,52 @@ int main(int argc, char* argv[]) {
 		imgui_window_is_focused |= ImGui::IsWindowFocused();
 		ImGui::End();
 
+		// ---- sky ----//
 
-		// get gui input
+		ImGui::Begin("atmosphere", NULL, 0);
+		ImGui::Checkbox("physically accurate atmosphere", &render_sky);
+		ImGui::Separator();
+		ImGui::Text("light direction");
+		ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
+		imgui_help_marker("you can modify the exact light direction or\n"
+											"you can set the time of the day to resemble\n"
+											"the light's angle at that time.");
+		bool light_direction_modified = false;
+		if (light_any_direction) {
+			light_direction_modified |= ImGui::SliderFloat("x", &light_direction[0], -1.0f, 1.0f);
+			light_direction_modified |= ImGui::SliderFloat("y", &light_direction[1], -1.0f, 1.0f);
+			light_direction_modified |= ImGui::SliderFloat("z", &light_direction[2], -1.0f, 1.0f);
+		} else {
+			if (ImGui::SliderFloat("time", &time, 6.0f, 18.0f)) {
+				// sunrise - 6:00am
+				// sunset  - 6:00pm
+				light_direction[0] = 0.0f;
+				light_direction[1] = (time - 6.0f) / 6.0f;
+				light_direction[2] = light_direction[1] - 1.0f;
+				if (time > 12.0f) {
+					light_direction[1] = 2.0f - light_direction[1];
+				}
+				light_direction_modified = true;
+			}
+		}
+		// normalize light direction and update shader
+		if (light_direction_modified) {
+			// normalize light direction and update shader
+			float light_direction_module = std::sqrt(light_direction[0] * light_direction[0] + light_direction[1] * light_direction[1] + light_direction[2] * light_direction[2]);
+			light_direction[0] /= light_direction_module;
+			light_direction[1] /= light_direction_module;
+			light_direction[2] /= light_direction_module;
+		}
+		if (render_sky) {
+		} else {
+			ImGui::ColorEdit3("background color", &background_color[0]);
+		}
+
+		imgui_window_is_focused |= ImGui::IsWindowFocused();
+		ImGui::End();
+
+		// ---- settings ---- //
+
 		if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_None)) {
 			if (ImGui::BeginTabItem("rendering")) {
 				ImGui::SliderInt("fps", &fps, 10, 60);
@@ -360,31 +431,7 @@ int main(int argc, char* argv[]) {
 				}
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("sky")) {
-				// physically accurate sky or just bg color?
-				ImGui::Checkbox("render sky", &render_sky);
-				if (render_sky) {
-					ImGui::SliderFloat("time", &time, 6.0f, 18.0f);
-				} else {
-					ImGui::ColorEdit3("background color", &background_color[0]);
-				}
-				ImGui::EndTabItem();
-			}
 			if (ImGui::BeginTabItem("cloud")) {
-				ImGui::Text("basic parameters");
-				ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
-				ImGui::SliderFloat("shadowing threshold", &cloud_shadowing_threshold, 0.0f, 1.0f);
-				ImGui::ColorEdit3("color", &cloud_color[0]);
-				ImGui::InputFloat3("location", &cloud_location[0]);
-				ImGui::InputFloat3("volume", &cloud_volume[0]);
-				ImGui::Text("advanced parameters");
-				ImGui::SliderFloat("main noise scale", &cloud_noise_main_scale, 0.0f, 1.0f);
-				ImGui::SliderFloat("detail noise scale", &cloud_noise_detail_scale, 1.0f, 10.0f);
-				ImGui::SliderFloat("detail noise weight", &cloud_noise_detail_weight, 0.0f, 1.0f);
-				ImGui::SliderInt("samples per volume ray", &cloud_volume_samples, 32, 128);
-				ImGui::SliderInt("samples per in scatter light ray", &cloud_in_scatter_samples, 8, 64);
-				ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
-				ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("wind")) {
@@ -424,16 +471,6 @@ int main(int argc, char* argv[]) {
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-		// calculate variables based on input
-		//
-		// sunrise - 6:00am
-		// sunset  - 6:00pm
-		float sun_y = (time - 6.0f) / 6.0f;
-		float sun_z = sun_y - 1.0f;
-		if (time > 12.0f) {
-			sun_y = 2.0f - sun_y;
-		}
-
 		// compute angles
 		glm::mat4 view = view_matrix;
 		view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -452,7 +489,8 @@ int main(int argc, char* argv[]) {
 
 		// cloud
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
-		main_shader->set1f("cloud_shadowing_threshold", cloud_shadowing_threshold);
+		main_shader->set1f("cloud_shadowing_max_distance", cloud_shadowing_max_distance);
+		main_shader->set1f("cloud_shadowing_weight", cloud_shadowing_weight);
 		main_shader->set1f("cloud_noise_main_scale", cloud_noise_main_scale);
 		main_shader->set1f("cloud_noise_detail_scale", cloud_noise_detail_scale);
 		main_shader->set1f("cloud_noise_detail_weight", cloud_noise_detail_weight);
@@ -460,7 +498,7 @@ int main(int argc, char* argv[]) {
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
 		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
-		main_shader->set3f("cloud_volume", cloud_volume[0], cloud_volume[1], cloud_volume[2]);
+		main_shader->set3f("cloud_volume", cloud_volume[0] / 2.0f, cloud_volume[1] / 2.0f, cloud_volume[2] / 2.0f);
 
 		// wind
 		main_shader->set3f("wind_direction", wind_direction[0], wind_direction[1], wind_direction[2]);
@@ -468,7 +506,7 @@ int main(int argc, char* argv[]) {
 		// skydome
 		main_shader->set1i("render_sky", render_sky);
 		main_shader->set3f("background_color", background_color[0], background_color[1], background_color[2]);
-		main_shader->set3f("sun_direction", 0.0f, sun_y, sun_z);
+		main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
@@ -592,4 +630,16 @@ void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float
 	glDeleteBuffers(1, &ssbo_a);
 	glDeleteBuffers(1, &ssbo_b);
 	glDeleteBuffers(1, &ssbo_c);
+}
+
+
+static void imgui_help_marker(const char* desc) {
+	ImGui::TextDisabled("(?)");
+	if (ImGui::IsItemHovered()) {
+		ImGui::BeginTooltip();
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+		ImGui::TextUnformatted(desc);
+		ImGui::PopTextWrapPos();
+		ImGui::EndTooltip();
+	}
 }
