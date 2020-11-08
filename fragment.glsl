@@ -85,6 +85,10 @@ uniform vec3 wind_direction;
 uniform sampler3D main_noise_texture;
 uniform sampler3D detail_noise_texture;
 
+float remap(float value, float old_low, float old_high, float new_low, float new_high) {
+	return new_low + (value - old_low) * (new_high - new_low) / (old_high - old_low);
+}
+
 // ---- clouds ---- declarations ---- //
 float mie_density(vec3 position);
 float beer_powder(float x);
@@ -121,31 +125,44 @@ void main() {
 
 	// ---- mie ---- //
 	
-	float transparency = 1.0; // transparent
-	vec3 cloud = vec3(0.0); // accumulated light
+	float transmittance = 1.0; // transparent
+	vec3 color_cloud = vec3(0.0); // accumulated light
 	
 	vec2 march = ray_to_cloud(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
 	float distance_per_step = march.y / cloud_volume_samples;
 	float distance_travelled = 0.0;
 
-	// reflection cosine
-	float reflection_angle = dot(dir.xyz, light_direction);
+	// henyey greenstein phase function
+	// value for this ray's direction.
+	// -> provides silver lining when
+	//    looking towards sun.
+	float hg_constant = henyey_greenstein(0.2, dot(dir.xyz, light_direction));
 
-	// if ray hits cloud, compute lighting through it
+	// if ray hits cloud, compute amount of
+	// light that reaches the cloud's surface
 
-	for (float accumulated_density = 0.0; distance_travelled < march.y; distance_travelled += distance_per_step) {
+	for (; distance_travelled < march.y; distance_travelled += distance_per_step) {
 		vec3 ray_position = camera_location + dir.xyz * (march.x + distance_travelled);
+		// sample noise density at current
+		// ray position.
 		float density = mie_density(ray_position);
-		transparency *= exp(-density * distance_per_step);
-		if (transparency < 0.01) break;
+		// extinguish transmittance using
+		// beer's law -> (e^(-d*deltaX)).
+		transmittance *= exp(-density * distance_per_step);
+		// avoid doing extra loops if it's
+		// already dark.
+		if (transmittance < 0.01) break;
+		// amount of light in-scattered to 
+		// this point in the cloud;
+		// extinction coefficient when going
+		// through the volume toward the sun.
 		float in_light = mie_in_scatter(ray_position);
-		cloud += density * distance_per_step * in_light * transparency; //henyey_greenstein(-0.4, reflection_angle);
+		// add to cloud's surface color
+		color_cloud += density * distance_per_step * in_light * transmittance * hg_constant;
 	}
 
-	vec3 color = (transparency * atmosphere_color) + cloud;
-
 	// return fragment color
-	out_color = vec4(color, 1.0);
+	out_color = vec4((atmosphere_color * transmittance) + color_cloud, 1.0);
 }
 
 // --------------------- //
@@ -159,14 +176,16 @@ float mie_density(vec3 position) {
 	vec3 uvw = position * cloud_noise_main_scale;
 	vec3 main_sample_location = uvw + wind_direction * time;
 
-	const float container_fade_distance = 1.0;
+	const float container_fade_distance = 0.0;
 	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
 	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
 	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
 
-	float height = (position.y - lower_bound.y) / cloud_volume.y;
+	float height = (position.y - lower_bound.y) / (2.0 * cloud_volume.y);
+	height *= clamp(remap(ret_val), 0.0, 1.0);
+	height = clamp(remap(height, 0.0, 0.07, 0.0, 1.0));
 
-	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r;
+	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r * height;
 	float density = max(0.0, main_noise_fbm - cloud_density_threshold);
 
 	if (density > 0.0) {
@@ -179,35 +198,16 @@ float mie_density(vec3 position) {
 	return 0.0;
 }
 
-// beer's-powder law ― (1.0 - e^(-2x)) * (e^(-x))
-// https://www.desmos.com/calculator/kpikmuykza
-float beer_powder(float x) {
-	//return exp(-x);
-	return (1.0 - exp(-x * 2)) * exp(-x);
-}
-
 // approximation of a mie phase function
 // -> due to mie scattering's complexity, 
 //    an approximation is used.
 // -> an even cheaper alternative, if 
 //    needed, is be the Schlik phase 
-//    function, which doesn't use powers.
+//    function, which doesn't use pow.
 //
-float henyey_greenstein(float g, float alpha) {
-	return pow(1.0 - g, 3) / (4 * PI * pow(1 + g * g - 2 * g * alpha, 1.5));
-}
-
-// balanced blend
-float phase(float x) {
-	// parameters
-	float a = 1.0;
-	float b = 1.0;
-	float c = 1.0;
-	float d = 0.2;
-	// blend between parameters
-	float blend = 0.5;
-	float hg_blend = henyey_greenstein(x, a) * (1.0 - blend) + henyey_greenstein(x, -b) * blend;
-	return hg_blend * d + c;
+float henyey_greenstein(float g, float angle_cos) {
+	float g2 = g * g;
+	return (1.0 - g2) / (pow(1 + g2 - 2 * g * angle_cos, 1.5));
 }
 
 float mie_in_scatter(vec3 position) {

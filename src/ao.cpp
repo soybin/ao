@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
 	float cloud_noise_detail_scale = 5.0f;
 	float cloud_noise_detail_weight = 0.1f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
-	float cloud_location[3] = { 0.0f, 10.0f, 0.0f };
+	float cloud_location[3] = { 0.0f, 20.0f, 0.0f };
 	float cloud_volume[3] = { 30.0f, 3.0f, 30.0f };
 	// wind
 	float wind_direction[3] = { 0.1f, 0.0f, 0.0f };
