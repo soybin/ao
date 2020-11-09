@@ -68,7 +68,8 @@ int main(int argc, char* argv[]) {
 	float cursor_sensitivity = 5.0f;
 	unsigned int vao;
 	unsigned int vbo;
-	shader* compute_shader;
+	shader* compute_shader_main;
+	shader* compute_shader_weather;
 	shader* main_shader;
 	GLFWwindow* window;
 	// rendering
@@ -137,7 +138,8 @@ int main(int argc, char* argv[]) {
 	// ---- init shaders ---- //
 
 	// compute shader
-	compute_shader = new shader("./compute.glsl");
+	compute_shader_main = new shader("./compute_main.glsl");
+	compute_shader_weather = new shader("./compute_weather.glsl");
 	// normal shader
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
@@ -251,25 +253,34 @@ int main(int argc, char* argv[]) {
 
 	// main
 	unsigned int main_noise_id;
+	float main_noise_persistence = 0.8f;
 	int main_noise_resolution = 128;
 	int main_noise_subdivisions_a = 3;
 	int main_noise_subdivisions_b = 6;
 	int main_noise_subdivisions_c = 9;
-	float main_noise_persistence = 0.8f;
-	bake_noise(main_noise_id, compute_shader, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
+	bake_noise_main(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("main_noise_texture", main_noise_id);
 
 	// detail
 	unsigned int detail_noise_id;
 	int detail_noise_resolution = 32;
+	float detail_noise_persistence = 0.6f;
 	int detail_noise_subdivisions_a = 2;
 	int detail_noise_subdivisions_b = 4;
 	int detail_noise_subdivisions_c = 6;
-	float detail_noise_persistence = 0.6f;
-	bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
+	bake_noise_main(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("detail_noise_texture", detail_noise_id);
+
+	// weather
+	unsigned int weather_noise_id;
+	int weather_noise_resolution = 512;
+	float weather_noise_persistence = 0.72f;
+	int weather_noise_subdivisions_a = 8;
+	int weather_noise_subdivisions_b = 16;
+	int weather_noise_subdivisions_c = 32;
+	bake_noise_weather(weather_noise_id, compute_shader_weather, weather_noise_persistenece, weather_noise_subdivisions_a, weather_noise_subdivisions_b, weather_noise_subdivisions_c);
 
 	// ---- work ---- //
 
@@ -355,7 +366,7 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("layer mix persistence##1", &main_noise_persistence, 0.0f, 1.0f);
 			if (ImGui::Button("rebake##1")) {
 				main_shader->unbind();
-				bake_noise(main_noise_id, compute_shader, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
+				bake_noise(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
 				main_shader->bind();
 				main_shader->set1i("main_noise_texture", main_noise_id);
 			}
@@ -368,7 +379,7 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("layer mix persistence##2", &detail_noise_persistence, 0.0f, 1.0f);
 			if (ImGui::Button("rebake##2")) {
 				main_shader->unbind();
-				bake_noise(detail_noise_id, compute_shader, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
+				bake_noise(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
 				main_shader->bind();
 				main_shader->set1i("detail_noise_texture", detail_noise_id);
 			}
@@ -523,7 +534,8 @@ int main(int argc, char* argv[]) {
 
 	glfwTerminate();
 
-	delete compute_shader;
+	delete compute_shader_main;
+	delete compute_shader_weather;
 	delete main_shader;
 
 	return 0;
@@ -543,24 +555,31 @@ void cursor_position_callback(GLFWwindow* window, double x, double y) {
 // -------- noise texture -------- //
 // ------------------------------- //
 
-void compute_worley_grid(glm::vec4* points, int subdivision) {
+void compute_worley_grid(glm::vec4* points, int subdivision, bool 2d = false) {
 	srand(time(0));
 	float cell_size = 1.0f / (float)subdivision;
 	for (int i = 0; i < subdivision; ++i) {
 		for (int j = 0; j < subdivision; ++j) {
-			for (int k = 0; k < subdivision; ++k) {
-				float x = (float)rand()/(float)(RAND_MAX);
-				float y = (float)rand()/(float)(RAND_MAX);
-				float z = (float)rand()/(float)(RAND_MAX);
-				glm::vec3 offset = glm::vec3(i, j, k) * cell_size;
-				glm::vec3 corner = glm::vec3(x, y, z) * cell_size;
-				points[i + subdivision * (j + k * subdivision)] = glm::vec4(offset + corner, 0.0f);
+			if (!2d) { // main noise
+				for (int k = 0; k < subdivision; ++k) {
+					float x = (float)rand()/(float)(RAND_MAX);
+					float y = (float)rand()/(float)(RAND_MAX);
+					float z = (float)rand()/(float)(RAND_MAX);
+					glm::vec3 offset = glm::vec3(i, j, k) * cell_size;
+					glm::vec3 corner = glm::vec3(x, y, z) * cell_size;
+					points[i + subdivision * (j + k * subdivision)] = glm::vec4(offset + corner, 0.0f);
+				}
+			} else { // weather map
+				float x = (float)rand() / (float)(RAND_MAX);
+				float y = (float)rand() / (float)(RAND_MAX):
+				points[i + j * subdivision] = glm::vec4(offset + corner, 0.0f);
 			}
 		}
 	}
 }
 
-void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c) {
+// ---- 3d worley FBM ---- //
+void bake_noise_main(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c) {
 	// first time generating texture
 	if (glIsTexture(texture_id)) {
 		glDeleteTextures(1, &texture_id);
@@ -632,6 +651,81 @@ void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float
 	glDeleteBuffers(1, &ssbo_c);
 }
 
+// ---- 2d worley FBM ---- //
+void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c) {
+	// first time generating texture
+	if (glIsTexture(texture_id)) {
+		glDeleteTextures(1, &texture_id);
+		std::cout << "[+] baking new weather texture" << std::endl;
+	}
+	glGenTextures(1, &texture_id);
+	glActiveTexture(GL_TEXTURE0 + texture_id);
+	glBindTexture(GL_TEXTURE_2D, texture_id);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, resolution, resolution, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+	glBindImageTexture(0, texture_id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R8);
+
+	// lay random points per each cell in
+	// the grid.
+	// for each layer
+	glm::vec4* points_a = new glm::vec4[subdivisions_a * subdivisions_a];
+	glm::vec4* points_b = new glm::vec4[subdivisions_b * subdivisions_b];
+	glm::vec4* points_c = new glm::vec4[subdivisions_c * subdivisions_c];
+	compute_worley_grid(points_a, subdivisions_a, true);
+	compute_worley_grid(points_b, subdivisions_b, true);
+	compute_worley_grid(points_c, subdivisions_c, true);
+
+	// set shader variables
+	compute->bind();
+	compute->set1i("output_texture", 0);
+	compute->set1i("resolution", resolution);
+	compute->set1f("persistance", persistance);
+	compute->set1i("subdivisions_a", subdivisions_a);
+	compute->set1i("subdivisions_b", subdivisions_b);
+	compute->set1i("subdivisions_c", subdivisions_c);
+
+	// pass random points a to shader storage buffer object
+	unsigned int ssbo_a = 0;
+	glGenBuffers(1, &ssbo_a);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_a);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_a * subdivisions_a, points_a, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo_a);
+	delete[] points_a;
+
+	// pass random points b to shader storage buffer object
+	unsigned int ssbo_b = 0;
+	glGenBuffers(1, &ssbo_b);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_b);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_b * subdivisions_b, points_b, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo_b);
+	delete[] points_b;
+
+	// pass random points c to shader storage buffer object
+	unsigned int ssbo_c = 0;
+	glGenBuffers(1, &ssbo_c);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_c);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, 16 * subdivisions_c * subdivisions_c, points_c, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo_c);
+	delete[] points_c;
+	
+	// dispatch compute shader
+	glDispatchCompute(resolution / 8, resolution / 8, 1);
+
+	// wait till finished
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+	// delete buffers
+	glDeleteBuffers(1, &ssbo_a);
+	glDeleteBuffers(1, &ssbo_b);
+	glDeleteBuffers(1, &ssbo_c);
+}
+
+void bake_noise_weather() {
+
+}
 
 static void imgui_help_marker(const char* desc) {
 	ImGui::TextDisabled("(?)");
