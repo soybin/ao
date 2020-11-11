@@ -34,7 +34,9 @@ static void imgui_help_marker(const char* desc);
  * persistance = noisy doisy
  */
 
-void bake_noise(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
+void bake_noise_main(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
+
+void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
 
 // -------- c l o u d s --------//
 
@@ -78,17 +80,20 @@ int main(int argc, char* argv[]) {
 	// noise / clouds
 	int cloud_volume_samples = 32;
 	int cloud_in_scatter_samples = 8;
+	float cloud_weather_scale = 5.0f;
+	float cloud_weather_weight = 0.4f;
 	float cloud_shadowing_max_distance = 5.0f;
 	float cloud_shadowing_weight = 0.9f;
 	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.72f;
+	float cloud_density_threshold = 0.4f;
 	float cloud_density_multiplier = 5.0f;
+	float cloud_volume_edge_fade_distance = 5.0f;
 	float cloud_noise_main_scale = 0.1f;
 	float cloud_noise_detail_scale = 5.0f;
 	float cloud_noise_detail_weight = 0.1f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
-	float cloud_location[3] = { 0.0f, 20.0f, 0.0f };
-	float cloud_volume[3] = { 30.0f, 3.0f, 30.0f };
+	float cloud_location[3] = { 0.0f, 50.0f, 0.0f };
+	float cloud_volume[3] = { 80.0f, 5.0f, 80.0f };
 	// wind
 	float wind_direction[3] = { 0.1f, 0.0f, 0.0f };
 	// skydome
@@ -217,11 +222,11 @@ int main(int argc, char* argv[]) {
 		colors[{ 251, 196, 171}]  = { 3, 4, 7, 10, 15, 20, 21, 24, 27, 30 }; // a bit light - default
 		colors[{ 248, 173, 157 }] = {       8, 11, 16    , 22, 25, 28, 31 }; // medium - hovered
 		colors[{ 244, 151, 142}]  = {       9, 12, 17, 19, 23, 26, 29, 32 }; // a bit dark - pressed
-		for (auto& [color, indices] : colors) {
-			for (auto& index : indices) {
-				style.Colors[index].x = (float)color[0] / 255.0f;
-				style.Colors[index].y = (float)color[1] / 255.0f;
-				style.Colors[index].z = (float)color[2] / 255.0f;
+		for (auto& color_index : colors) {
+			for (auto& index : color_index.second) {
+				style.Colors[index].x = (float)color_index.first[0] / 255.0f;
+				style.Colors[index].y = (float)color_index.first[1] / 255.0f;
+				style.Colors[index].z = (float)color_index.first[2] / 255.0f;
 				style.Colors[index].w = 0.95f;
 			}
 		}
@@ -261,6 +266,7 @@ int main(int argc, char* argv[]) {
 	bake_noise_main(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("main_noise_texture", main_noise_id);
+	main_shader->unbind();
 
 	// detail
 	unsigned int detail_noise_id;
@@ -272,15 +278,19 @@ int main(int argc, char* argv[]) {
 	bake_noise_main(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
 	main_shader->bind();
 	main_shader->set1i("detail_noise_texture", detail_noise_id);
+	main_shader->unbind();
 
 	// weather
 	unsigned int weather_noise_id;
-	int weather_noise_resolution = 512;
-	float weather_noise_persistence = 0.72f;
-	int weather_noise_subdivisions_a = 8;
-	int weather_noise_subdivisions_b = 16;
-	int weather_noise_subdivisions_c = 32;
-	bake_noise_weather(weather_noise_id, compute_shader_weather, weather_noise_persistenece, weather_noise_subdivisions_a, weather_noise_subdivisions_b, weather_noise_subdivisions_c);
+	int weather_noise_resolution = 2048;
+	float weather_noise_persistence = 0.8f;
+	int weather_noise_subdivisions_a = 4;
+	int weather_noise_subdivisions_b = 8;
+	int weather_noise_subdivisions_c = 16;
+	bake_noise_weather(weather_noise_id, compute_shader_weather, weather_noise_resolution, weather_noise_persistence, weather_noise_subdivisions_a, weather_noise_subdivisions_b, weather_noise_subdivisions_c);
+	main_shader->bind();
+	main_shader->set1i("weather_noise_texture", weather_noise_id);
+	main_shader->unbind();
 
 	// ---- work ---- //
 
@@ -302,6 +312,7 @@ int main(int argc, char* argv[]) {
 		// draw fragment to screen if required to.
 		// otherwise, draw last fragment
 		if (frame % 1 == 0) {
+			main_shader->bind();
 			glBindVertexArray(vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
@@ -338,10 +349,16 @@ int main(int argc, char* argv[]) {
 		ImGui::Separator();
 		ImGui::Text("basic properties");
 		ImGui::Separator();
+		ImGui::SliderFloat("edge fade distance", &cloud_volume_edge_fade_distance, 1.0f, 20.0f);
 		ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
 		ImGui::ColorEdit3("color", &cloud_color[0]);
 		ImGui::InputFloat3("location", &cloud_location[0]);
 		ImGui::InputFloat3("volume", &cloud_volume[0]);
+		ImGui::Separator();
+		ImGui::Text("weather");
+		ImGui::SliderFloat("scale##weather", &cloud_weather_scale, 1.0f, 20.0f);
+		ImGui::SliderFloat("weight##weather", &cloud_weather_weight, 0.0f, 1.0f);
+		ImGui::Separator();
 		ImGui::Separator();
 		ImGui::Text("shadowing");
 		ImGui::Separator();
@@ -366,9 +383,9 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("layer mix persistence##1", &main_noise_persistence, 0.0f, 1.0f);
 			if (ImGui::Button("rebake##1")) {
 				main_shader->unbind();
-				bake_noise(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
-				main_shader->bind();
+				bake_noise_main(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
 				main_shader->set1i("main_noise_texture", main_noise_id);
+				main_shader->bind();
 			}
 			ImGui::Separator();
 			ImGui::Text("detail noise");
@@ -379,7 +396,7 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("layer mix persistence##2", &detail_noise_persistence, 0.0f, 1.0f);
 			if (ImGui::Button("rebake##2")) {
 				main_shader->unbind();
-				bake_noise(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
+				bake_noise_main(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
 				main_shader->bind();
 				main_shader->set1i("detail_noise_texture", detail_noise_id);
 			}
@@ -394,7 +411,7 @@ int main(int argc, char* argv[]) {
 		ImGui::Checkbox("physically accurate atmosphere", &render_sky);
 		ImGui::Separator();
 		ImGui::Text("light direction");
-		ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
+		bool light_direction_method_modified = ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
 		imgui_help_marker("you can modify the exact light direction or\n"
 											"you can set the time of the day to resemble\n"
 											"the light's angle at that time.");
@@ -403,18 +420,16 @@ int main(int argc, char* argv[]) {
 			light_direction_modified |= ImGui::SliderFloat("x", &light_direction[0], -1.0f, 1.0f);
 			light_direction_modified |= ImGui::SliderFloat("y", &light_direction[1], -1.0f, 1.0f);
 			light_direction_modified |= ImGui::SliderFloat("z", &light_direction[2], -1.0f, 1.0f);
-		} else {
-			if (ImGui::SliderFloat("time", &time, 6.0f, 18.0f)) {
-				// sunrise - 6:00am
-				// sunset  - 6:00pm
-				light_direction[0] = 0.0f;
-				light_direction[1] = (time - 6.0f) / 6.0f;
-				light_direction[2] = light_direction[1] - 1.0f;
-				if (time > 12.0f) {
-					light_direction[1] = 2.0f - light_direction[1];
-				}
-				light_direction_modified = true;
+		} else if (light_direction_method_modified || ImGui::SliderFloat("time", &time, 6.0f, 18.0f)) {
+			// sunrise - 6:00am
+			// sunset  - 6:00pm
+			light_direction[0] = 0.0f;
+			light_direction[1] = (time - 6.0f) / 6.0f;
+			light_direction[2] = light_direction[1] - 1.0f;
+			if (time > 12.0f) {
+				light_direction[1] = 2.0f - light_direction[1];
 			}
+			light_direction_modified = true;
 		}
 		// normalize light direction and update shader
 		if (light_direction_modified) {
@@ -498,7 +513,12 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("cloud_volume_samples", cloud_volume_samples);
 		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
 
+		// weather
+		main_shader->set1f("cloud_weather_scale", cloud_weather_scale);
+		main_shader->set1f("cloud_weather_weight", cloud_weather_weight);
+
 		// cloud
+		main_shader->set1f("cloud_volume_edge_fade_distance", cloud_volume_edge_fade_distance);
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
 		main_shader->set1f("cloud_shadowing_max_distance", cloud_shadowing_max_distance);
 		main_shader->set1f("cloud_shadowing_weight", cloud_shadowing_weight);
@@ -555,12 +575,12 @@ void cursor_position_callback(GLFWwindow* window, double x, double y) {
 // -------- noise texture -------- //
 // ------------------------------- //
 
-void compute_worley_grid(glm::vec4* points, int subdivision, bool 2d = false) {
+void compute_worley_grid(glm::vec4* points, int subdivision, bool weather = false) {
 	srand(time(0));
 	float cell_size = 1.0f / (float)subdivision;
 	for (int i = 0; i < subdivision; ++i) {
 		for (int j = 0; j < subdivision; ++j) {
-			if (!2d) { // main noise
+			if (!weather) { // main noise
 				for (int k = 0; k < subdivision; ++k) {
 					float x = (float)rand()/(float)(RAND_MAX);
 					float y = (float)rand()/(float)(RAND_MAX);
@@ -571,8 +591,10 @@ void compute_worley_grid(glm::vec4* points, int subdivision, bool 2d = false) {
 				}
 			} else { // weather map
 				float x = (float)rand() / (float)(RAND_MAX);
-				float y = (float)rand() / (float)(RAND_MAX):
-				points[i + j * subdivision] = glm::vec4(offset + corner, 0.0f);
+				float y = (float)rand() / (float)(RAND_MAX);
+				glm::vec2 offset = glm::vec2(i, j) * cell_size;
+				glm::vec2 corner = glm::vec2(x, y) * cell_size;
+				points[i + j * subdivision] = glm::vec4(offset + corner, 0.0f, 0.0f);
 			}
 		}
 	}

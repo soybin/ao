@@ -69,11 +69,14 @@ uniform mat4 view_matrix;
 
 uniform int cloud_volume_samples;
 uniform int cloud_in_scatter_samples;
+uniform float cloud_weather_scale;
+uniform float cloud_weather_weight;
 uniform float cloud_shadowing_max_distance;
 uniform float cloud_shadowing_weight;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
+uniform float cloud_volume_edge_fade_distance;
 uniform float cloud_noise_main_scale;
 uniform float cloud_noise_detail_scale;
 uniform float cloud_noise_detail_weight;
@@ -84,6 +87,7 @@ uniform vec3 wind_direction;
 
 uniform sampler3D main_noise_texture;
 uniform sampler3D detail_noise_texture;
+uniform sampler2D weather_noise_texture;
 
 float remap(float value, float old_low, float old_high, float new_low, float new_high) {
 	return new_low + (value - old_low) * (new_high - new_low) / (old_high - old_low);
@@ -106,6 +110,13 @@ vec3 atmosphere_scatter(vec3 direction, float l);
 
 void main() {
 
+	/*vec2 uvv = gl_FragCoord.xy / resolution;
+	if (uvv.x > 1.0 || uvv.y > 1.0) {
+		out_color = vec4(0.0);
+		return;
+	}
+	out_color = vec4(vec3(texture(weather_noise_texture, gl_FragCoord.xy / resolution).r), 1.0);
+	return;*/
 	// ---- ray direction ---- // 
 
 	vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
@@ -176,19 +187,27 @@ float mie_density(vec3 position) {
 	vec3 uvw = position * cloud_noise_main_scale;
 	vec3 main_sample_location = uvw + wind_direction * time;
 
-	const float container_fade_distance = 0.0;
-	float distance_edge_x = min(container_fade_distance, min(position.x - lower_bound.x, lower_bound.x - position.x));
-	float distance_edge_z = min(container_fade_distance, min(position.z - lower_bound.z, lower_bound.z - position.z));
-	float edge_weight = min(distance_edge_x, distance_edge_z) / container_fade_distance;
+	// edge weight.
+	// to not cut off the clouds abruptly
+	float distance_edge_x = min(cloud_volume_edge_fade_distance, min(position.x - lower_bound.x, upper_bound.x - position.x));
+	float distance_edge_z = min(cloud_volume_edge_fade_distance, min(position.z - lower_bound.z, upper_bound.z - position.z));
+	float edge_weight = min(distance_edge_x, distance_edge_z) / cloud_volume_edge_fade_distance;
 
-	float height = (position.y - lower_bound.y) / (2.0 * cloud_volume.y);
-	height *= clamp(remap(ret_val), 0.0, 1.0);
-	height = clamp(remap(height, 0.0, 0.07, 0.0, 1.0));
+	// !!! -> round cloud based on height - probably not an efficient approach
+	// https://www.desmos.com/calculator/lg2fhwtxvo
+	float height = 1.0 - pow((position.y - lower_bound.y) / (2.0 * cloud_volume.y), 4);
 
-	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r * height;
-	float density = max(0.0, main_noise_fbm - cloud_density_threshold);
+	// 2d worley noise to decide where can clouds be rendered
+	float weather = max(texture(weather_noise_texture, main_sample_location.xz / cloud_weather_scale).r, 0.0);
+
+	// main cloud shape noise
+	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r;
+
+	// total density at current point from these values
+	float density = max(0.0, main_noise_fbm * height * weather * edge_weight - cloud_density_threshold);
 
 	if (density > 0.0) {
+		// add detail to cloud's shape
 		vec3 detail_sample_position = uvw * cloud_noise_detail_scale;
 		float detail_noise_fbm = texture(detail_noise_texture, detail_sample_position).r;
 		density -= detail_noise_fbm * cloud_noise_detail_weight;
