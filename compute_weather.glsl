@@ -87,7 +87,7 @@ void main() {
 	float layer_a = compute_worley_layer(position, subdivisions_a, 0);
 	float layer_b = compute_worley_layer(position, subdivisions_b, 1);
 	float layer_c = compute_worley_layer(position, subdivisions_c, 2);
-	// fractal brownian motion - combine layers
+	// combine layers
 	float noise_sum = layer_a + (layer_b * persistance) + (layer_c * persistance * persistance);
 	// map to 0.0 - 1.0
 	noise_sum /= (1.0 + persistance + (persistance * persistance));

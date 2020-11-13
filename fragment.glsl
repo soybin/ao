@@ -67,27 +67,32 @@ uniform vec3 light_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
+// cloud
 uniform int cloud_volume_samples;
 uniform int cloud_in_scatter_samples;
-uniform float cloud_weather_scale;
-uniform float cloud_weather_weight;
 uniform float cloud_shadowing_max_distance;
 uniform float cloud_shadowing_weight;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
 uniform float cloud_volume_edge_fade_distance;
-uniform float cloud_noise_main_scale;
-uniform float cloud_noise_detail_scale;
-uniform float cloud_noise_detail_weight;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
 
-uniform vec3 wind_direction;
+// noise
+uniform float noise_main_scale;
+uniform vec3 noise_main_offset;
+uniform float noise_weather_scale;
+uniform float noise_weather_weight;
+uniform vec2 noise_weather_offset;
+uniform float noise_detail_scale;
+uniform float noise_detail_weight;
+uniform vec3 noise_detail_offset;
+uniform sampler3D noise_main_texture;
+uniform sampler2D noise_weather_texture;
+uniform sampler3D noise_detail_texture;
 
-uniform sampler3D main_noise_texture;
-uniform sampler3D detail_noise_texture;
-uniform sampler2D weather_noise_texture;
+uniform vec3 wind_direction;
 
 float remap(float value, float old_low, float old_high, float new_low, float new_high) {
 	return new_low + (value - old_low) * (new_high - new_low) / (old_high - old_low);
@@ -184,7 +189,7 @@ float mie_density(vec3 position) {
 	float time = frame / 1000.0;
 	vec3 lower_bound = cloud_location - cloud_volume;
 	vec3 upper_bound = cloud_location + cloud_volume;
-	vec3 uvw = position * cloud_noise_main_scale;
+	vec3 uvw = position * noise_main_scale;
 	vec3 main_sample_location = uvw + wind_direction * time;
 
 	// edge weight.
@@ -198,19 +203,19 @@ float mie_density(vec3 position) {
 	float height = 1.0 - pow((position.y - lower_bound.y) / (2.0 * cloud_volume.y), 4);
 
 	// 2d worley noise to decide where can clouds be rendered
-	float weather = max(texture(weather_noise_texture, main_sample_location.xz / cloud_weather_scale).r, 0.0);
+	float weather = max(texture(noise_weather_texture, main_sample_location.xz / noise_weather_scale + noise_weather_offset).r, 0.0);
 
 	// main cloud shape noise
-	float main_noise_fbm = texture(main_noise_texture, main_sample_location).r;
+	float main_noise_fbm = texture(noise_main_texture, main_sample_location + noise_main_offset).r;
 
 	// total density at current point from these values
 	float density = max(0.0, main_noise_fbm * height * weather * edge_weight - cloud_density_threshold);
 
 	if (density > 0.0) {
 		// add detail to cloud's shape
-		vec3 detail_sample_position = uvw * cloud_noise_detail_scale;
-		float detail_noise_fbm = texture(detail_noise_texture, detail_sample_position).r;
-		density -= detail_noise_fbm * cloud_noise_detail_weight;
+		vec3 detail_sample_position = uvw * noise_detail_scale + noise_detail_offset;;
+		float detail_noise_fbm = texture(noise_detail_texture, detail_sample_position).r;
+		density -= detail_noise_fbm * noise_detail_weight;
 		return max(0.0, density * cloud_density_multiplier);
 	}
 

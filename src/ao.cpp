@@ -25,7 +25,7 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-static void imgui_help_marker(const char* desc);
+static void imgui_help_marker(const char* desc, bool warning = false);
 
 // -------- n o i s e -------- //
 
@@ -77,7 +77,8 @@ int main(int argc, char* argv[]) {
 	// rendering
 	int fps = 60;
 	int millis_per_frame = 1000 / fps;
-	// noise / clouds
+	float last_fps = fps;
+	// clouds
 	int cloud_volume_samples = 32;
 	int cloud_in_scatter_samples = 8;
 	float cloud_weather_scale = 5.0f;
@@ -88,12 +89,18 @@ int main(int argc, char* argv[]) {
 	float cloud_density_threshold = 0.4f;
 	float cloud_density_multiplier = 5.0f;
 	float cloud_volume_edge_fade_distance = 5.0f;
-	float cloud_noise_main_scale = 0.1f;
-	float cloud_noise_detail_scale = 5.0f;
-	float cloud_noise_detail_weight = 0.1f;
 	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
 	float cloud_location[3] = { 0.0f, 50.0f, 0.0f };
-	float cloud_volume[3] = { 80.0f, 5.0f, 80.0f };
+	float cloud_volume[3] = { 200.0f, 5.0f, 200.0f };
+	// noise
+	float noise_main_scale = 0.1f;
+	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
+	float noise_weather_scale = 5.0f;
+	float noise_weather_weight = 0.8f;
+	float noise_weather_offset[2] = { 0.0f, 0.0f };
+	float noise_detail_scale = 5.0f;
+	float noise_detail_weight = 0.1f;
+	float noise_detail_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// wind
 	float wind_direction[3] = { 0.1f, 0.0f, 0.0f };
 	// skydome
@@ -142,9 +149,10 @@ int main(int argc, char* argv[]) {
 
 	// ---- init shaders ---- //
 
-	// compute shader
+	// compute shaders
 	compute_shader_main = new shader("./compute_main.glsl");
 	compute_shader_weather = new shader("./compute_weather.glsl");
+
 	// normal shader
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
@@ -257,39 +265,39 @@ int main(int argc, char* argv[]) {
 	glEnable(GL_TEXTURE_3D);
 
 	// main
-	unsigned int main_noise_id;
-	float main_noise_persistence = 0.8f;
-	int main_noise_resolution = 128;
-	int main_noise_subdivisions_a = 3;
-	int main_noise_subdivisions_b = 6;
-	int main_noise_subdivisions_c = 9;
-	bake_noise_main(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
+	unsigned int noise_main_id;
+	float noise_main_persistence = 0.8f;
+	int noise_main_resolution = 256;
+	int noise_main_subdivisions_a = 3;
+	int noise_main_subdivisions_b = 6;
+	int noise_main_subdivisions_c = 9;
+	bake_noise_main(noise_main_id, compute_shader_main, noise_main_resolution, noise_main_persistence, noise_main_subdivisions_a, noise_main_subdivisions_b, noise_main_subdivisions_c);
 	main_shader->bind();
-	main_shader->set1i("main_noise_texture", main_noise_id);
-	main_shader->unbind();
-
-	// detail
-	unsigned int detail_noise_id;
-	int detail_noise_resolution = 32;
-	float detail_noise_persistence = 0.6f;
-	int detail_noise_subdivisions_a = 2;
-	int detail_noise_subdivisions_b = 4;
-	int detail_noise_subdivisions_c = 6;
-	bake_noise_main(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
-	main_shader->bind();
-	main_shader->set1i("detail_noise_texture", detail_noise_id);
+	main_shader->set1i("noise_main_texture", noise_main_id);
 	main_shader->unbind();
 
 	// weather
-	unsigned int weather_noise_id;
-	int weather_noise_resolution = 2048;
-	float weather_noise_persistence = 0.8f;
-	int weather_noise_subdivisions_a = 4;
-	int weather_noise_subdivisions_b = 8;
-	int weather_noise_subdivisions_c = 16;
-	bake_noise_weather(weather_noise_id, compute_shader_weather, weather_noise_resolution, weather_noise_persistence, weather_noise_subdivisions_a, weather_noise_subdivisions_b, weather_noise_subdivisions_c);
+	unsigned int noise_weather_id;
+	int noise_weather_resolution = 2048;
+	float noise_weather_persistence = 0.8f;
+	int noise_weather_subdivisions_a = 4;
+	int noise_weather_subdivisions_b = 8;
+	int noise_weather_subdivisions_c = 16;
+	bake_noise_weather(noise_weather_id, compute_shader_weather, noise_weather_resolution, noise_weather_persistence, noise_weather_subdivisions_a, noise_weather_subdivisions_b, noise_weather_subdivisions_c);
 	main_shader->bind();
-	main_shader->set1i("weather_noise_texture", weather_noise_id);
+	main_shader->set1i("noise_weather_texture", noise_weather_id);
+	main_shader->unbind();
+
+	// detail
+	unsigned int noise_detail_id;
+	int noise_detail_resolution = 32;
+	float noise_detail_persistence = 0.6f;
+	int noise_detail_subdivisions_a = 2;
+	int noise_detail_subdivisions_b = 4;
+	int noise_detail_subdivisions_c = 6;
+	bake_noise_main(noise_detail_id, compute_shader_main, noise_detail_resolution, noise_detail_persistence, noise_detail_subdivisions_a, noise_detail_subdivisions_b, noise_detail_subdivisions_c);
+	main_shader->bind();
+	main_shader->set1i("noise_detail_texture", noise_detail_id);
 	main_shader->unbind();
 
 	// ---- work ---- //
@@ -332,73 +340,125 @@ int main(int argc, char* argv[]) {
 
 		// ---- clouds ---- //
 
-		ImGui::Begin("clouds", NULL, 0);
-		ImGui::Text("cloud model preset");
-		if (ImGui::BeginCombo("##cloud model", cloud_model_current)) {
-			for (int n = 0; n < IM_ARRAYSIZE(cloud_models); ++n) {
-				bool is_selected = (cloud_model_current == cloud_models[n]);
-				if (ImGui::Selectable(cloud_models[n], is_selected)) {
-					cloud_model_current = cloud_models[n];
+		ImGui::Begin("ao", NULL, 0);
+		ImGui::PushItemWidth(-150);
+		if (ImGui::CollapsingHeader("clouds")) {
+			ImGui::Text("preset: "); ImGui::SameLine();
+			if (ImGui::BeginCombo("##cloud model", cloud_model_current)) {
+				for (int n = 0; n < IM_ARRAYSIZE(cloud_models); ++n) {
+					bool is_selected = (cloud_model_current == cloud_models[n]);
+					if (ImGui::Selectable(cloud_models[n], is_selected)) {
+						cloud_model_current = cloud_models[n];
+					}
+					if (is_selected) {
+						ImGui::SetItemDefaultFocus();	
+					}
 				}
-				if (is_selected) {
-					ImGui::SetItemDefaultFocus();	
-				}
+				ImGui::EndCombo();
 			}
-			ImGui::EndCombo();
+			ImGui::SameLine();
+			if (ImGui::Button("compute selected preset!")) {
+				// magic
+			}
+			ImGui::InputFloat3("location", &cloud_location[0]);
+			ImGui::InputFloat3("volume", &cloud_volume[0]);
+			ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
+			ImGui::ColorEdit3("base color", &cloud_color[0]);
 		}
 		ImGui::Separator();
 		ImGui::Text("basic properties");
-		ImGui::Separator();
-		ImGui::SliderFloat("edge fade distance", &cloud_volume_edge_fade_distance, 1.0f, 20.0f);
-		ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
-		ImGui::ColorEdit3("color", &cloud_color[0]);
-		ImGui::InputFloat3("location", &cloud_location[0]);
-		ImGui::InputFloat3("volume", &cloud_volume[0]);
-		ImGui::Separator();
-		ImGui::Text("weather");
-		ImGui::SliderFloat("scale##weather", &cloud_weather_scale, 1.0f, 20.0f);
-		ImGui::SliderFloat("weight##weather", &cloud_weather_weight, 0.0f, 1.0f);
-		ImGui::Separator();
-		ImGui::Separator();
 		ImGui::Text("shadowing");
 		ImGui::Separator();
 		ImGui::SliderFloat("weight", &cloud_shadowing_weight, 0.0f, 1.0f);
 		ImGui::InputFloat("maximum distance", &cloud_shadowing_max_distance);
-		ImGui::Separator();
-		ImGui::Text("rendering");
-		ImGui::Separator();
-		ImGui::SliderFloat("main noise scale", &cloud_noise_main_scale, 0.0f, 0.512f);
-		ImGui::SliderFloat("detail noise scale", &cloud_noise_detail_scale, 1.6f, 10.0f);
-		ImGui::SliderFloat("detail noise weight", &cloud_noise_detail_weight, 0.0f, 1.0f);
-		ImGui::SliderInt("volume samples", &cloud_volume_samples, 32, 128);
-		ImGui::SliderInt("in-scatter samples", &cloud_in_scatter_samples, 8, 64);
-		ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
-		ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
+		if (ImGui::CollapsingHeader("rendering")) {
+			ImGui::SliderInt("volume samples", &cloud_volume_samples, 16, 128);
+			ImGui::SliderInt("in-scatter samples", &cloud_in_scatter_samples, 4, 64);
+			ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
+			ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
+		}
 		if (ImGui::CollapsingHeader("noise")) {
-			ImGui::Text("main noise");
-			ImGui::InputInt("resolution(% 8 == 0)##1", &main_noise_resolution);
-			ImGui::InputInt("first layer subdivisions##1", &main_noise_subdivisions_a);
-			ImGui::InputInt("second layer subdivisions##1", &main_noise_subdivisions_b);
-			ImGui::InputInt("third layer subdivisions##1", &main_noise_subdivisions_c);
-			ImGui::SliderFloat("layer mix persistence##1", &main_noise_persistence, 0.0f, 1.0f);
-			if (ImGui::Button("rebake##1")) {
-				main_shader->unbind();
-				bake_noise_main(main_noise_id, compute_shader_main, main_noise_resolution, main_noise_persistence, main_noise_subdivisions_a, main_noise_subdivisions_b, main_noise_subdivisions_c);
-				main_shader->set1i("main_noise_texture", main_noise_id);
-				main_shader->bind();
-			}
+			ImGui::Text("main");
+			ImGui::SliderFloat("scale##1", &noise_main_scale, 0.0f, 0.512f);
+			ImGui::SliderFloat3("offset##1", &noise_main_offset[0], 0.0f, 1.0f);
+			ImGui::Text("weather");
+			ImGui::SliderFloat("scale2", &noise_weather_scale, 1.0f, 10.0f);
+			ImGui::SliderFloat("weight##1", &noise_weather_weight, 0.0f, 1.0f);
+			ImGui::SliderFloat2("offset##2", &noise_weather_offset[0], 0.0f, 1.0f);
+			ImGui::Text("detail");
+			ImGui::SliderFloat("scale##3", &noise_detail_scale, 1.0f, 10.0f);
+			ImGui::SliderFloat("weight##2", &noise_detail_weight, 0.0f, 1.0f);
+			ImGui::SliderFloat3("offset##3", &noise_detail_offset[0], 0.0f, 1.0f);
 			ImGui::Separator();
-			ImGui::Text("detail noise");
-			ImGui::InputInt("resolution (% 8 == 0)##2", &detail_noise_resolution);
-			ImGui::InputInt("first layer subdivisions##2", &detail_noise_subdivisions_a);
-			ImGui::InputInt("second layer subdivisions##2", &detail_noise_subdivisions_b);
-			ImGui::InputInt("third layer subdivisions##2", &detail_noise_subdivisions_c);
-			ImGui::SliderFloat("layer mix persistence##2", &detail_noise_persistence, 0.0f, 1.0f);
-			if (ImGui::Button("rebake##2")) {
-				main_shader->unbind();
-				bake_noise_main(detail_noise_id, compute_shader_main, detail_noise_resolution, detail_noise_persistence, detail_noise_subdivisions_a, detail_noise_subdivisions_b, detail_noise_subdivisions_c);
-				main_shader->bind();
-				main_shader->set1i("detail_noise_texture", detail_noise_id);
+			ImGui::Text("rebake noise textures");
+			if (ImGui::TreeNode("main")) {
+				ImGui::Text("three dimensional worley noise texture\nused to define the shape of the clouds.");
+				ImGui::InputInt("resolution##1", &noise_main_resolution); ImGui::SameLine();
+				imgui_help_marker("should be a multiple of eight to avoid\npossible artifacts.", true);
+				ImGui::SliderFloat("persistence##1", &noise_main_persistence, 0.0f, 1.0f); ImGui::SameLine();
+				imgui_help_marker(	"factor by which layers are mixed up.\n"
+														"the higher the value, the more mixed up\nthey'll be.\n"
+														"if the value is zero, only the first\nlayer will be accounted for.");
+				ImGui::Text("subdivisions per texture layer"); ImGui::SameLine();
+				imgui_help_marker("cube root of the number of cell divisions\nfor each layer of the texture.");
+				ImGui::InputInt("A##1", &noise_main_subdivisions_a);
+				ImGui::InputInt("B##1", &noise_main_subdivisions_b);
+				ImGui::InputInt("C##1", &noise_main_subdivisions_c);
+				if (ImGui::Button("bake##1")) {
+					main_shader->unbind();
+					bake_noise_main(noise_main_id, compute_shader_main, noise_main_resolution, noise_main_persistence, noise_main_subdivisions_a, noise_main_subdivisions_b, noise_main_subdivisions_c);
+					main_shader->set1i("noise_main_texture", noise_main_id);
+					main_shader->bind();
+				}
+				ImGui::SameLine();
+				imgui_help_marker("bake at your own risk.\nbig values may take some time to compute\nor may freeze your computer.", true);
+				ImGui::TreePop();
+			}
+			if (ImGui::TreeNode("weather")) {
+				ImGui::Text("two dimensional worley noise texture\nused to define where can clouds exist.");
+				ImGui::InputInt("resolution##2", &noise_weather_resolution); ImGui::SameLine();
+				imgui_help_marker("should be a multiple of eight to avoid\npossible artifacts.", true);
+				ImGui::SliderFloat("persistence##2", &noise_weather_persistence, 0.0f, 1.0f); ImGui::SameLine();
+				imgui_help_marker(	"factor by which layers are mixed up.\n"
+														"the higher the value, the more mixed up\nthey'll be.\n"
+														"if the value is zero, only the first\nlayer will be accounted for.");
+				ImGui::Text("subdivisions per texture layer"); ImGui::SameLine();
+				imgui_help_marker("square root of the number of cell divisions\nfor each layer of the texture.");
+				ImGui::InputInt("A##2", &noise_weather_subdivisions_a);
+				ImGui::InputInt("B##2", &noise_weather_subdivisions_b);
+				ImGui::InputInt("C##2", &noise_weather_subdivisions_c);
+				if (ImGui::Button("bake##1")) {
+					main_shader->unbind();
+					bake_noise_weather(noise_weather_id, compute_shader_weather, noise_weather_resolution, noise_weather_persistence, noise_weather_subdivisions_a, noise_weather_subdivisions_b, noise_weather_subdivisions_c);
+					main_shader->set1i("noise_weather_texture", noise_weather_id);
+					main_shader->bind();
+				}
+				ImGui::SameLine();
+				imgui_help_marker("bake at your own risk.\nbig values may take some time to compute\nor may freeze your computer.", true);
+				ImGui::TreePop();
+			}
+			if (ImGui::TreeNode("detail")) {
+				ImGui::Text("three dimensional worley noise texture\nused to add detail to the shape of the\nclouds.");
+				ImGui::InputInt("resolution##3", &noise_detail_resolution); ImGui::SameLine();
+				imgui_help_marker("should be a multiple of eight to avoid\npossible artifacts.", true);
+				ImGui::SliderFloat("persistence##3", &noise_detail_persistence, 0.0f, 1.0f); ImGui::SameLine();
+				imgui_help_marker(	"factor by which layers are mixed up.\n"
+														"the higher the value, the more mixed up\nthey'll be.\n"
+														"if the value is zero, only the first\nlayer will be accounted for.");
+				ImGui::Text("subdivisions per texture layer"); ImGui::SameLine();
+				imgui_help_marker("cube root of the number of cell divisions\nfor each layer of the texture.");
+				ImGui::InputInt("A##3", &noise_detail_subdivisions_a);
+				ImGui::InputInt("B##3", &noise_detail_subdivisions_b);
+				ImGui::InputInt("C##3", &noise_detail_subdivisions_c);
+				if (ImGui::Button("bake##3")) {
+					main_shader->unbind();
+					bake_noise_main(noise_detail_id, compute_shader_main, noise_detail_resolution, noise_detail_persistence, noise_detail_subdivisions_a, noise_detail_subdivisions_b, noise_detail_subdivisions_c);
+					main_shader->set1i("noise_detail_texture", noise_detail_id);
+					main_shader->bind();
+				}
+				ImGui::SameLine();
+				imgui_help_marker("bake at your own risk.\nbig values may take some time to compute\nor may freeze your computer.", true);
+				ImGui::TreePop();
 			}
 		}
 
@@ -493,6 +553,20 @@ int main(int argc, char* argv[]) {
 			cursor_delta_y = 0;
 		}
 
+		// ---- overlay ---- //
+
+		const float distance = 10.0f;
+		ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+		ImGui::SetNextWindowPos( { distance, distance }, ImGuiCond_Always, { 0.0f, 0.0f });
+		ImGui::SetNextWindowBgAlpha(1.0f);
+		if (ImGui::Begin("ao by soybin", NULL, window_flags)) {
+			ImGui::Text("ao by soybin");
+			ImGui::Text("~~~~~~~~~~~~");
+			ImGui::Text("fps    -> %.3f", last_fps);
+			ImGui::Text("angles -> %.1f | %.1f", camera_pitch, camera_yaw);
+		}
+		ImGui::End();
+
 		// render gui to frame
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -513,23 +587,26 @@ int main(int argc, char* argv[]) {
 		main_shader->set1i("cloud_volume_samples", cloud_volume_samples);
 		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
 
-		// weather
-		main_shader->set1f("cloud_weather_scale", cloud_weather_scale);
-		main_shader->set1f("cloud_weather_weight", cloud_weather_weight);
-
 		// cloud
 		main_shader->set1f("cloud_volume_edge_fade_distance", cloud_volume_edge_fade_distance);
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
 		main_shader->set1f("cloud_shadowing_max_distance", cloud_shadowing_max_distance);
 		main_shader->set1f("cloud_shadowing_weight", cloud_shadowing_weight);
-		main_shader->set1f("cloud_noise_main_scale", cloud_noise_main_scale);
-		main_shader->set1f("cloud_noise_detail_scale", cloud_noise_detail_scale);
-		main_shader->set1f("cloud_noise_detail_weight", cloud_noise_detail_weight);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
 		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
 		main_shader->set3f("cloud_volume", cloud_volume[0] / 2.0f, cloud_volume[1] / 2.0f, cloud_volume[2] / 2.0f);
+
+		// noise
+		main_shader->set1f("noise_main_scale", noise_main_scale);
+		main_shader->set3f("noise_main_offset", noise_main_offset[0], noise_main_offset[1], noise_main_offset[2]);
+		main_shader->set1f("noise_weather_scale", noise_weather_scale);
+		main_shader->set1f("noise_weather_weight", noise_weather_weight);
+		main_shader->set2f("noise_weather_offset", noise_weather_offset[0], noise_weather_offset[1]);
+		main_shader->set1f("noise_detail_scale", noise_detail_scale);
+		main_shader->set1f("noise_detail_weight", noise_detail_weight);
+		main_shader->set3f("noise_detail_offset", noise_detail_offset[0], noise_detail_offset[1], noise_detail_offset[2]);
 
 		// wind
 		main_shader->set3f("wind_direction", wind_direction[0], wind_direction[1], wind_direction[2]);
@@ -542,9 +619,14 @@ int main(int argc, char* argv[]) {
 		// update screen with new frame
 		glfwSwapBuffers(window);
 
+		// how long did this frame take to render
 		std::chrono::duration<double, std::milli> millis_ellapsed(std::chrono::system_clock::now() - millis_start);
 		int millis_remaining_per_frame = millis_per_frame - millis_ellapsed.count();
 
+		// update current fps
+		last_fps = 1000.0f / millis_ellapsed.count();
+
+		// wait for frame time to ellapse
 		if (millis_remaining_per_frame > 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(millis_remaining_per_frame));
 		}
@@ -745,12 +827,8 @@ void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolutio
 	glDeleteBuffers(1, &ssbo_c);
 }
 
-void bake_noise_weather() {
-
-}
-
-static void imgui_help_marker(const char* desc) {
-	ImGui::TextDisabled("(?)");
+static void imgui_help_marker(const char* desc, bool warning) {
+	ImGui::TextDisabled(warning ? "(!)" : "(?)");
 	if (ImGui::IsItemHovered()) {
 		ImGui::BeginTooltip();
 		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
