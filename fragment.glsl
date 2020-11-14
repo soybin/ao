@@ -68,8 +68,6 @@ uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
 // cloud
-uniform int cloud_volume_samples;
-uniform int cloud_in_scatter_samples;
 uniform float cloud_shadowing_max_distance;
 uniform float cloud_shadowing_weight;
 uniform float cloud_absorption;
@@ -78,6 +76,10 @@ uniform float cloud_density_multiplier;
 uniform float cloud_volume_edge_fade_distance;
 uniform vec3 cloud_location;
 uniform vec3 cloud_volume;
+
+// render
+uniform int render_volume_samples;
+uniform int render_in_scatter_samples;
 
 // noise
 uniform float noise_main_scale;
@@ -115,13 +117,6 @@ vec3 atmosphere_scatter(vec3 direction, float l);
 
 void main() {
 
-	/*vec2 uvv = gl_FragCoord.xy / resolution;
-	if (uvv.x > 1.0 || uvv.y > 1.0) {
-		out_color = vec4(0.0);
-		return;
-	}
-	out_color = vec4(vec3(texture(weather_noise_texture, gl_FragCoord.xy / resolution).r), 1.0);
-	return;*/
 	// ---- ray direction ---- // 
 
 	vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
@@ -145,7 +140,7 @@ void main() {
 	vec3 color_cloud = vec3(0.0); // accumulated light
 	
 	vec2 march = ray_to_cloud(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
-	float distance_per_step = march.y / cloud_volume_samples;
+	float distance_per_step = march.y / render_volume_samples;
 	float distance_travelled = 0.0;
 
 	// henyey greenstein phase function
@@ -204,6 +199,7 @@ float mie_density(vec3 position) {
 
 	// 2d worley noise to decide where can clouds be rendered
 	float weather = max(texture(noise_weather_texture, main_sample_location.xz / noise_weather_scale + noise_weather_offset).r, 0.0);
+	weather = weather * noise_weather_weight + (1.0 - noise_weather_weight); // apply weight
 
 	// main cloud shape noise
 	float main_noise_fbm = texture(noise_main_texture, main_sample_location + noise_main_offset).r;
@@ -213,7 +209,7 @@ float mie_density(vec3 position) {
 
 	if (density > 0.0) {
 		// add detail to cloud's shape
-		vec3 detail_sample_position = uvw * noise_detail_scale + noise_detail_offset;;
+		vec3 detail_sample_position = uvw * noise_detail_scale + noise_detail_offset;
 		float detail_noise_fbm = texture(noise_detail_texture, detail_sample_position).r;
 		density -= detail_noise_fbm * noise_detail_weight;
 		return max(0.0, density * cloud_density_multiplier);
@@ -237,10 +233,10 @@ float henyey_greenstein(float g, float angle_cos) {
 float mie_in_scatter(vec3 position) {
 	float distance_inside_volume = ray_to_cloud(position, 1.0 / light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
 	distance_inside_volume = min(cloud_shadowing_max_distance, distance_inside_volume);
-	float step_size = distance_inside_volume / float(cloud_in_scatter_samples);
+	float step_size = distance_inside_volume / float(render_in_scatter_samples);
 	float transparency = 1.0; // transparent
 	float total_density = 0.0;
-	for (int i = 0; i < cloud_in_scatter_samples; ++i) {
+	for (int i = 0; i < render_in_scatter_samples; ++i) {
 		total_density += (mie_density(position) * step_size);
 		position += light_direction * step_size;
 	}

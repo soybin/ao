@@ -63,10 +63,9 @@ int main(int argc, char* argv[]) {
 
 	// ---- init ao data ---- //
 
-	int run = 1;
-	int fullscreen = 0;
-	int width = 1280;
-	int height = 720;
+	bool run = 1;
+	bool fullscreen = 0;
+	int resolution[2] = { 1280, 720 };
 	float cursor_sensitivity = 5.0f;
 	unsigned int vao;
 	unsigned int vbo;
@@ -78,25 +77,22 @@ int main(int argc, char* argv[]) {
 	int fps = 60;
 	int millis_per_frame = 1000 / fps;
 	float last_fps = fps;
+	int render_volume_samples = 32;
+	int render_in_scatter_samples = 8;
 	// clouds
-	int cloud_volume_samples = 32;
-	int cloud_in_scatter_samples = 8;
-	float cloud_weather_scale = 5.0f;
-	float cloud_weather_weight = 0.4f;
 	float cloud_shadowing_max_distance = 5.0f;
 	float cloud_shadowing_weight = 0.9f;
 	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.4f;
-	float cloud_density_multiplier = 5.0f;
+	float cloud_density_threshold = 0.5f;
+	float cloud_density_multiplier = 4.0f;
 	float cloud_volume_edge_fade_distance = 5.0f;
-	float cloud_color[3] = { 1.0f, 1.0f, 1.0f };
 	float cloud_location[3] = { 0.0f, 50.0f, 0.0f };
 	float cloud_volume[3] = { 200.0f, 5.0f, 200.0f };
 	// noise
 	float noise_main_scale = 0.1f;
 	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
 	float noise_weather_scale = 5.0f;
-	float noise_weather_weight = 0.8f;
+	float noise_weather_weight = 1.0f;
 	float noise_weather_offset[2] = { 0.0f, 0.0f };
 	float noise_detail_scale = 5.0f;
 	float noise_detail_weight = 0.1f;
@@ -126,7 +122,7 @@ int main(int argc, char* argv[]) {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	window = glfwCreateWindow(width, height, "glsl", 0, 0);
+	window = glfwCreateWindow(resolution[0], resolution[1], "glsl", 0, 0);
 
 	if (window == NULL) {
 		glfwTerminate();
@@ -156,7 +152,9 @@ int main(int argc, char* argv[]) {
 	// normal shader
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
-	main_shader->set2f("resolution", width, height);
+	main_shader->set2f("resolution", resolution[0], resolution[1]);
+	main_shader->set1i("render_volume_samples", render_volume_samples);
+	main_shader->set1i("render_in_scatter_samples", render_in_scatter_samples);
 	main_shader->unbind();
 
 	//---- init imgui ----//
@@ -313,7 +311,7 @@ int main(int argc, char* argv[]) {
 
 		glfwPollEvents();
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-			run = 0;
+			run = false;
 			continue;
 		}
 
@@ -341,8 +339,8 @@ int main(int argc, char* argv[]) {
 		// ---- clouds ---- //
 
 		ImGui::Begin("ao", NULL, 0);
-		ImGui::PushItemWidth(-150);
-		if (ImGui::CollapsingHeader("clouds")) {
+		ImGui::PushItemWidth(-125);
+		if (ImGui::CollapsingHeader("cloud")) {
 			ImGui::Text("preset: "); ImGui::SameLine();
 			if (ImGui::BeginCombo("##cloud model", cloud_model_current)) {
 				for (int n = 0; n < IM_ARRAYSIZE(cloud_models); ++n) {
@@ -357,25 +355,47 @@ int main(int argc, char* argv[]) {
 				ImGui::EndCombo();
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("compute selected preset!")) {
+			if (ImGui::Button("use selected preset")) {
 				// magic
 			}
 			ImGui::InputFloat3("location", &cloud_location[0]);
 			ImGui::InputFloat3("volume", &cloud_volume[0]);
 			ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f);
-			ImGui::ColorEdit3("base color", &cloud_color[0]);
-		}
-		ImGui::Separator();
-		ImGui::Text("basic properties");
-		ImGui::Text("shadowing");
-		ImGui::Separator();
-		ImGui::SliderFloat("weight", &cloud_shadowing_weight, 0.0f, 1.0f);
-		ImGui::InputFloat("maximum distance", &cloud_shadowing_max_distance);
-		if (ImGui::CollapsingHeader("rendering")) {
-			ImGui::SliderInt("volume samples", &cloud_volume_samples, 16, 128);
-			ImGui::SliderInt("in-scatter samples", &cloud_in_scatter_samples, 4, 64);
 			ImGui::SliderFloat("density threshold", &cloud_density_threshold, 0.0f, 1.0f);
 			ImGui::InputFloat("density multiplier", &cloud_density_multiplier);
+		}
+		if (ImGui::CollapsingHeader("shadowing")) {
+			ImGui::Text("cloud self-shadowing");
+			ImGui::SliderFloat("weight", &cloud_shadowing_weight, 0.0f, 1.0f);
+			ImGui::InputFloat("maximum distance", &cloud_shadowing_max_distance); ImGui::SameLine();
+			imgui_help_marker("maximum distance at which shadows will\nbe casted.");
+		}
+		if (ImGui::CollapsingHeader("rendering")) {
+			ImGui::Checkbox("full screen", &fullscreen);
+			ImGui::InputInt2("resolution", &resolution[0]);
+			ImGui::SliderInt("target fps", &fps, 10, 244);
+			ImGui::SliderInt("volume samples", &render_volume_samples, 8, 128); ImGui::SameLine();
+			imgui_help_marker("number of noise samples taken along the\nmain ray; the greater this value, the\ngreater the render quality.");
+			ImGui::SliderInt("in-scatter samples", &render_in_scatter_samples, 4, 64); ImGui::SameLine();
+			imgui_help_marker("number of noise samples taken to compute\nthe in scattered light for each sample\nof the primary ray.");
+			if (ImGui::Button("apply changes")) {
+				GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+				const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+				if (fullscreen) {
+					glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+				} else {
+					glfwSetWindowMonitor(window, nullptr, 0, 0, resolution[0], resolution[1], mode->refreshRate);
+				}
+				millis_per_frame = 1000 / fps;
+				// update shader settings
+				main_shader->bind();
+				main_shader->set2f("resolution", resolution[0], resolution[1]);
+				main_shader->set1i("render_volume_samples", render_volume_samples);
+				main_shader->set1i("render_in_scatter_samples", render_in_scatter_samples);
+				main_shader->unbind();
+			}
+			ImGui::SameLine();
+			imgui_help_marker("high noise sampling values will\nslow down ao.");
 		}
 		if (ImGui::CollapsingHeader("noise")) {
 			ImGui::Text("main");
@@ -583,10 +603,6 @@ int main(int argc, char* argv[]) {
 		main_shader->set3f("camera_location", camera_location.x, camera_location.y, camera_location.z);
 		main_shader->set_mat4fv("view_matrix", view);
 
-		// rendering
-		main_shader->set1i("cloud_volume_samples", cloud_volume_samples);
-		main_shader->set1i("cloud_in_scatter_samples", cloud_in_scatter_samples);
-
 		// cloud
 		main_shader->set1f("cloud_volume_edge_fade_distance", cloud_volume_edge_fade_distance);
 		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
@@ -594,7 +610,6 @@ int main(int argc, char* argv[]) {
 		main_shader->set1f("cloud_shadowing_weight", cloud_shadowing_weight);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
-		main_shader->set3f("cloud_color", cloud_color[0], cloud_color[1], cloud_color[2]);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);
 		main_shader->set3f("cloud_volume", cloud_volume[0] / 2.0f, cloud_volume[1] / 2.0f, cloud_volume[2] / 2.0f);
 
@@ -621,15 +636,13 @@ int main(int argc, char* argv[]) {
 
 		// how long did this frame take to render
 		std::chrono::duration<double, std::milli> millis_ellapsed(std::chrono::system_clock::now() - millis_start);
-		int millis_remaining_per_frame = millis_per_frame - millis_ellapsed.count();
+		int millis_remaining_per_frame = std::max((int)(millis_per_frame - millis_ellapsed.count()), 0);
 
 		// update current fps
-		last_fps = 1000.0f / millis_ellapsed.count();
+		last_fps = 1000.0f / (millis_ellapsed.count() + millis_remaining_per_frame);
 
-		// wait for frame time to ellapse
-		if (millis_remaining_per_frame > 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(millis_remaining_per_frame));
-		}
+		// wait for remaining time
+		std::this_thread::sleep_for(std::chrono::milliseconds(millis_remaining_per_frame));
 	}
 
 	// ---- cleanup ---- //
