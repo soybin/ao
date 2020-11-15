@@ -68,8 +68,6 @@ uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
 // cloud
-uniform float cloud_shadowing_max_distance;
-uniform float cloud_shadowing_weight;
 uniform float cloud_absorption;
 uniform float cloud_density_threshold;
 uniform float cloud_density_multiplier;
@@ -80,6 +78,8 @@ uniform vec3 cloud_volume;
 // render
 uniform int render_volume_samples;
 uniform int render_in_scatter_samples;
+uniform float render_shadowing_max_distance;
+uniform float render_shadowing_weight;
 
 // noise
 uniform float noise_main_scale;
@@ -94,7 +94,10 @@ uniform sampler3D noise_main_texture;
 uniform sampler2D noise_weather_texture;
 uniform sampler3D noise_detail_texture;
 
-uniform vec3 wind_direction;
+uniform vec3 wind_vector;
+uniform float wind_main_weight;
+uniform float wind_weather_weight;
+uniform float wind_detail_weight;
 
 float remap(float value, float old_low, float old_high, float new_low, float new_high) {
 	return new_low + (value - old_low) * (new_high - new_low) / (old_high - old_low);
@@ -184,8 +187,6 @@ float mie_density(vec3 position) {
 	float time = frame / 1000.0;
 	vec3 lower_bound = cloud_location - cloud_volume;
 	vec3 upper_bound = cloud_location + cloud_volume;
-	vec3 uvw = position * noise_main_scale;
-	vec3 main_sample_location = uvw + wind_direction * time;
 
 	// edge weight.
 	// to not cut off the clouds abruptly
@@ -198,23 +199,24 @@ float mie_density(vec3 position) {
 	float height = 1.0 - pow((position.y - lower_bound.y) / (2.0 * cloud_volume.y), 4);
 
 	// 2d worley noise to decide where can clouds be rendered
-	float weather = max(texture(noise_weather_texture, main_sample_location.xz / noise_weather_scale + noise_weather_offset).r, 0.0);
-	weather = weather * noise_weather_weight + (1.0 - noise_weather_weight); // apply weight
+	vec2 weather_sample_location = position.xz / noise_weather_scale + noise_weather_offset + wind_vector.xz * wind_weather_weight * time;
+	float weather = max(texture(noise_weather_texture, weather_sample_location).r, 0.0);
+	weather = weather * noise_weather_weight + (1.0 - noise_weather_weight); // apply noise weight
 
 	// main cloud shape noise
-	float main_noise_fbm = texture(noise_main_texture, main_sample_location + noise_main_offset).r;
+	vec3 main_sample_location = position / noise_main_scale + noise_main_offset + wind_vector * wind_main_weight * time;
+	float main_noise_fbm = texture(noise_main_texture, main_sample_location).r;
 
-	// total density at current point from these values
+	// total density at current point obtained from these values
 	float density = max(0.0, main_noise_fbm * height * weather * edge_weight - cloud_density_threshold);
 
 	if (density > 0.0) {
 		// add detail to cloud's shape
-		vec3 detail_sample_position = uvw * noise_detail_scale + noise_detail_offset;
-		float detail_noise_fbm = texture(noise_detail_texture, detail_sample_position).r;
+		vec3 detail_sample_location = position / noise_detail_scale + noise_detail_offset + wind_vector * wind_detail_weight * time;
+		float detail_noise_fbm = texture(noise_detail_texture, detail_sample_location).r;
 		density -= detail_noise_fbm * noise_detail_weight;
 		return max(0.0, density * cloud_density_multiplier);
 	}
-
 	return 0.0;
 }
 
@@ -232,7 +234,7 @@ float henyey_greenstein(float g, float angle_cos) {
 
 float mie_in_scatter(vec3 position) {
 	float distance_inside_volume = ray_to_cloud(position, 1.0 / light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
-	distance_inside_volume = min(cloud_shadowing_max_distance, distance_inside_volume);
+	distance_inside_volume = min(render_shadowing_max_distance, distance_inside_volume);
 	float step_size = distance_inside_volume / float(render_in_scatter_samples);
 	float transparency = 1.0; // transparent
 	float total_density = 0.0;
@@ -240,7 +242,7 @@ float mie_in_scatter(vec3 position) {
 		total_density += (mie_density(position) * step_size);
 		position += light_direction * step_size;
 	}
-	return (1.0 - cloud_shadowing_weight) + exp(-total_density * cloud_absorption) * cloud_shadowing_weight;
+	return (1.0 - render_shadowing_weight) + exp(-total_density * cloud_absorption) * render_shadowing_weight;
 }
 
 // from
