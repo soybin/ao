@@ -109,48 +109,78 @@ int main(int argc, char* argv[]) {
 	GLFWwindow* window;
 	// clouds
 	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.5f;
+	float cloud_density_threshold = 0.4f;
 	float cloud_density_multiplier = 4.0f;
-	float cloud_volume_edge_fade_distance = 5.0f;
-	float cloud_location[3] = { 0.0f, 50.0f, 0.0f };
-	float cloud_volume[3] = { 50.0f, 5.0f, 50.0f };
+	float cloud_volume_edge_fade_distance = 8.0f;
+	float cloud_location[3] = { 0.0f, 100.0f, 0.0f };
+	float cloud_volume[3] = { 100.0f, 10.0f, 100.0f };
 	// noise - main
-	int noise_main_resolution = 256;
+	int noise_main_resolution = 512;
 	int noise_main_subdivisions_a = 2;
-	int noise_main_subdivisions_b = 3;
-	int noise_main_subdivisions_c = 4;
-	float noise_main_persistence = 0.3f;
-	float noise_main_scale = 25.0f;
+	int noise_main_subdivisions_b = 6;
+	int noise_main_subdivisions_c = 10;
+	float noise_main_persistence = 0.8f;
+	float noise_main_scale = 48.0f;
 	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// noise - weather
-	int noise_weather_resolution = 2048;
-	int noise_weather_subdivisions_a = 3;
-	int noise_weather_subdivisions_b = 6;
-	int noise_weather_subdivisions_c = 9;
-	float noise_weather_persistence = 0.6f;
-	float noise_weather_scale = 15.0f;
+	int noise_weather_resolution = 4096;
+	int noise_weather_subdivisions_a = 4;
+	int noise_weather_subdivisions_b = 8;
+	int noise_weather_subdivisions_c = 12;
+	float noise_weather_persistence = 0.9f;
+	float noise_weather_scale = 64.0f;
 	float noise_weather_weight = 1.0f;
 	float noise_weather_offset[2] = { 0.0f, 0.0f };
 	// noise - detail
-	int noise_detail_resolution = 64;
+	int noise_detail_resolution = 128;
 	int noise_detail_subdivisions_a = 2;
 	int noise_detail_subdivisions_b = 4;
-	int noise_detail_subdivisions_c = 6;
-	float noise_detail_persistence = 0.9f;
-	float noise_detail_scale = 5.0f;
-	float noise_detail_weight = 0.1f;
+	int noise_detail_subdivisions_c = 8;
+	float noise_detail_persistence = 1.0f;
+	float noise_detail_scale = 8.0f;
+	float noise_detail_weight = 0.2f;
 	float noise_detail_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// wind
-	float wind_direction[3] = { 0.0f, 0.0f, 0.0f };
-	float wind_speed = 3.0f;
+	float wind_direction[3];
+	{
+		srand(time(0));
+		// set random direction
+		float x = (float)rand()/(float)(RAND_MAX);
+		if (rand() % 2) {
+			x = -x;
+		}
+		float y = (float)rand()/(float)(RAND_MAX);
+		if (rand() % 2) {
+			y = -y;
+		}
+		float z = (float)rand()/(float)(RAND_MAX);
+		if (rand() % 2) {
+			z = -z;
+		}
+		wind_direction[0] = x;
+		wind_direction[1] = y;
+		wind_direction[2] = z;
+	}
+	float wind_speed = 4.0f;
 	float wind_main_weight = 1.0f;
-	float wind_weather_weight = 1.0f;
-	float wind_detail_weight = 1.0f;
+	float wind_weather_weight = 0.9f;
+	float wind_detail_weight = 0.8f;
 	// skydome
 	bool render_sky = 1;
 	bool light_any_direction = 0;
 	float time = 15.0f; // 6:00am - 18:00pm
-	float light_direction[3] = { 0.0f, 0.707107f, 0.707107f };
+	float light_direction[3];
+	float inverse_light_direction[3];
+	{
+		// set light direction
+		float yz = std::sqrt(2.0f) / 2.0f;
+		light_direction[0] = 0.0f;
+		light_direction[1] = yz;
+		light_direction[2] = yz;
+		inverse_light_direction[0] = 0.0f;
+		inverse_light_direction[1] = 1.0f / yz;
+		inverse_light_direction[2] = 1.0f / yz;
+	}
 	float background_color[3] = { 0.0f, 0.0f, 0.0f };
 	// camera
 	glm::vec3 camera_location = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -163,8 +193,8 @@ int main(int argc, char* argv[]) {
 	float last_fps = fps;
 	int render_volume_samples = 32;
 	int render_in_scatter_samples = 8;
-	float render_shadowing_max_distance = 5.0f;
-	float render_shadowing_weight = 0.9f;
+	float render_shadowing_max_distance = 8.0f;
+	float render_shadowing_weight = 0.64;
 	// export
 	
 
@@ -209,6 +239,8 @@ int main(int argc, char* argv[]) {
 	// normal shader
 	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
 	main_shader->bind();
+	main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
+	main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
 	main_shader->set2f("resolution", resolution[0], resolution[1]);
 	main_shader->set1i("render_volume_samples", render_volume_samples);
 	main_shader->set1i("render_in_scatter_samples", render_in_scatter_samples);
@@ -406,7 +438,7 @@ int main(int argc, char* argv[]) {
 			imgui_help_marker("coordinates of the center of the rendering\nvolume");
 			ImGui::SliderFloat("absorption", &cloud_absorption, 0.0f, 1.0f); ImGui::SameLine();
 			imgui_help_marker("amount of light that will by retained by\nthe cloud.");
-			ImGui::SliderFloat("edge fade", &cloud_volume_edge_fade_distance, 0.0f, 100.0f); ImGui::SameLine();
+			ImGui::SliderFloat("edge fade", &cloud_volume_edge_fade_distance, 1.0f, 100.0f); ImGui::SameLine();
 			imgui_help_marker("distance from the edges of the volume\nalong which the noise sampling will\ngradually decrease in order to avoid\nabrupt rendering breakups.");
 			ImGui::Separator();
 			ImGui::Text("density");
@@ -423,11 +455,11 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("scale##1", &noise_main_scale, 1.0f, 64.0f);
 			ImGui::SliderFloat3("offset##1", &noise_main_offset[0], 0.0f, 1.0f);
 			ImGui::Text("weather");
-			ImGui::SliderFloat("scale##2", &noise_weather_scale, 1.0f, 64.0f);
+			ImGui::SliderFloat("scale##2", &noise_weather_scale, 1.0f, 128.0f);
 			ImGui::SliderFloat("weight##1", &noise_weather_weight, 0.0f, 1.0f);
 			ImGui::SliderFloat2("offset##2", &noise_weather_offset[0], 0.0f, 1.0f);
 			ImGui::Text("detail");
-			ImGui::SliderFloat("scale##3", &noise_detail_scale, 1.0f, 4.0f);
+			ImGui::SliderFloat("scale##3", &noise_detail_scale, 1.0f, 16.0f);
 			ImGui::SliderFloat("weight##2", &noise_detail_weight, 0.0f, 1.0f);
 			ImGui::SliderFloat3("offset##3", &noise_detail_offset[0], 0.0f, 1.0f);
 			ImGui::Separator();
@@ -539,6 +571,24 @@ int main(int argc, char* argv[]) {
 				light_direction[0] /= light_direction_module;
 				light_direction[1] /= light_direction_module;
 				light_direction[2] /= light_direction_module;
+				// update in shader
+				main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
+				if (light_direction[0] == 0.0f) {
+					inverse_light_direction[0] = 0.0f;
+				} else {
+					inverse_light_direction[0] = 1.0f / light_direction[0];
+				}
+				if (light_direction[1] == 0.0f) {
+					inverse_light_direction[1] = 0.0f;
+				} else {
+					inverse_light_direction[1] = 1.0f / light_direction[1];
+				}
+				if (light_direction[2] == 0.0f) {
+					inverse_light_direction[2] = 0.0f;
+				} else {
+					inverse_light_direction[2] = 1.0f / light_direction[2];
+				}
+				main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
 			}
 			if (render_sky) {
 			} else {
@@ -704,7 +754,6 @@ int main(int argc, char* argv[]) {
 		// skydome
 		main_shader->set1i("render_sky", render_sky);
 		main_shader->set3f("background_color", background_color[0], background_color[1], background_color[2]);
-		main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 
 		// update screen with new frame
 		glfwSwapBuffers(window);
@@ -746,7 +795,6 @@ void cursor_position_callback(GLFWwindow* window, double x, double y) {
 // ------------------------------- //
 
 void compute_worley_grid(glm::vec4* points, int subdivision, bool weather = false) {
-	srand(time(0));
 	float cell_size = 1.0f / (float)subdivision;
 	for (int i = 0; i < subdivision; ++i) {
 		for (int j = 0; j < subdivision; ++j) {

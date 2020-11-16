@@ -64,6 +64,7 @@ uniform vec3 background_color;
 uniform vec3 box_size;
 uniform vec3 cloud_color;
 uniform vec3 light_direction;
+uniform vec3 inverse_light_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
 
@@ -233,7 +234,7 @@ float henyey_greenstein(float g, float angle_cos) {
 }
 
 float mie_in_scatter(vec3 position) {
-	float distance_inside_volume = ray_to_cloud(position, 1.0 / light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
+	float distance_inside_volume = ray_to_cloud(position, inverse_light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
 	distance_inside_volume = min(render_shadowing_max_distance, distance_inside_volume);
 	float step_size = distance_inside_volume / float(render_in_scatter_samples);
 	float transparency = 1.0; // transparent
