@@ -86,7 +86,6 @@ uniform float render_shadowing_weight;
 uniform float noise_main_scale;
 uniform vec3 noise_main_offset;
 uniform float noise_weather_scale;
-uniform float noise_weather_weight;
 uniform vec2 noise_weather_offset;
 uniform float noise_detail_scale;
 uniform float noise_detail_weight;
@@ -202,7 +201,7 @@ float mie_density(vec3 position) {
 	// 2d worley noise to decide where can clouds be rendered
 	vec2 weather_sample_location = position.xz / noise_weather_scale + noise_weather_offset + wind_vector.xz * wind_weather_weight * time;
 	float weather = max(texture(noise_weather_texture, weather_sample_location).r, 0.0);
-	weather = weather * noise_weather_weight + (1.0 - noise_weather_weight); // apply noise weight
+	weather = max(weather - cloud_density_threshold, 0.0);
 
 	// main cloud shape noise
 	vec3 main_sample_location = position / noise_main_scale + noise_main_offset + wind_vector * wind_main_weight * time;

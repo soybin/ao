@@ -63,7 +63,6 @@ struct cloud {
 	int noise_weather_subdivisions_c;
 	float noise_weather_persistence;
 	float noise_weather_scale;
-	float noise_weather_weight;
 	// noise - detail
 	int noise_detail_subdivisions_a;
 	int noise_detail_subdivisions_b;
@@ -109,36 +108,35 @@ int main(int argc, char* argv[]) {
 	GLFWwindow* window;
 	// clouds
 	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.4f;
+	float cloud_density_threshold = 0.303f;
 	float cloud_density_multiplier = 4.0f;
-	float cloud_volume_edge_fade_distance = 8.0f;
+	float cloud_volume_edge_fade_distance = 4.0f;
 	float cloud_location[3] = { 0.0f, 100.0f, 0.0f };
 	float cloud_volume[3] = { 100.0f, 10.0f, 100.0f };
 	// noise - main
 	int noise_main_resolution = 512;
-	int noise_main_subdivisions_a = 2;
-	int noise_main_subdivisions_b = 6;
-	int noise_main_subdivisions_c = 10;
-	float noise_main_persistence = 0.8f;
-	float noise_main_scale = 48.0f;
+	int noise_main_subdivisions_a = 4;
+	int noise_main_subdivisions_b = 16;
+	int noise_main_subdivisions_c = 64;
+	float noise_main_persistence = 1.0f;
+	float noise_main_scale = 64.0f;
 	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// noise - weather
 	int noise_weather_resolution = 4096;
 	int noise_weather_subdivisions_a = 4;
-	int noise_weather_subdivisions_b = 8;
-	int noise_weather_subdivisions_c = 12;
-	float noise_weather_persistence = 0.9f;
-	float noise_weather_scale = 64.0f;
-	float noise_weather_weight = 1.0f;
+	int noise_weather_subdivisions_b = 64;
+	int noise_weather_subdivisions_c = 1024;
+	float noise_weather_persistence = 0.4f;
+	float noise_weather_scale = 128.0f;
 	float noise_weather_offset[2] = { 0.0f, 0.0f };
 	// noise - detail
 	int noise_detail_resolution = 128;
-	int noise_detail_subdivisions_a = 2;
-	int noise_detail_subdivisions_b = 4;
-	int noise_detail_subdivisions_c = 8;
+	int noise_detail_subdivisions_a = 3;
+	int noise_detail_subdivisions_b = 6;
+	int noise_detail_subdivisions_c = 9;
 	float noise_detail_persistence = 1.0f;
-	float noise_detail_scale = 8.0f;
-	float noise_detail_weight = 0.2f;
+	float noise_detail_scale = 12.0f;
+	float noise_detail_weight = 0.14f;
 	float noise_detail_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// wind
 	float wind_direction[3];
@@ -146,25 +144,27 @@ int main(int argc, char* argv[]) {
 		srand(time(0));
 		// set random direction
 		float x = (float)rand()/(float)(RAND_MAX);
-		if (rand() % 2) {
+		if (rand() % 2 == 0) {
 			x = -x;
 		}
+		//srand(time(0) + 1);
 		float y = (float)rand()/(float)(RAND_MAX);
-		if (rand() % 2) {
+		if (rand() % 2 == 0) {
 			y = -y;
 		}
+		//srand(time(0) + 2);
 		float z = (float)rand()/(float)(RAND_MAX);
-		if (rand() % 2) {
+		if (rand() % 2 == 0) {
 			z = -z;
 		}
 		wind_direction[0] = x;
 		wind_direction[1] = y;
 		wind_direction[2] = z;
 	}
-	float wind_speed = 4.0f;
+	float wind_speed = 1.0f;
 	float wind_main_weight = 1.0f;
-	float wind_weather_weight = 0.9f;
-	float wind_detail_weight = 0.8f;
+	float wind_weather_weight = 1.0f;
+	float wind_detail_weight = 1.0f;
 	// skydome
 	bool render_sky = 1;
 	bool light_any_direction = 0;
@@ -177,9 +177,9 @@ int main(int argc, char* argv[]) {
 		light_direction[0] = 0.0f;
 		light_direction[1] = yz;
 		light_direction[2] = yz;
-		inverse_light_direction[0] = 0.0f;
-		inverse_light_direction[1] = 1.0f / yz;
-		inverse_light_direction[2] = 1.0f / yz;
+		inverse_light_direction[0] = 1.0f;
+		inverse_light_direction[1] = 1.0f / light_direction[1];
+		inverse_light_direction[2] = 1.0f / light_direction[2];
 	}
 	float background_color[3] = { 0.0f, 0.0f, 0.0f };
 	// camera
@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
 	float render_shadowing_max_distance = 8.0f;
 	float render_shadowing_weight = 0.64;
 	// export
-	
+
 
 	// ---- init glfw ---- //
 
@@ -257,7 +257,7 @@ int main(int argc, char* argv[]) {
 	ImGui_ImplOpenGL3_Init("#version 430");
 
 	// load custom theme
-  ImGuiStyle& style = ImGui::GetStyle();
+	ImGuiStyle& style = ImGui::GetStyle();
 	style.FramePadding.x = 4.0f;
 	style.FramePadding.y = 4.0f;
 	style.WindowPadding.x = 10.0f;
@@ -452,14 +452,13 @@ int main(int argc, char* argv[]) {
 
 		if (ImGui::CollapsingHeader("noise")) {
 			ImGui::Text("main");
-			ImGui::SliderFloat("scale##1", &noise_main_scale, 1.0f, 64.0f);
+			ImGui::SliderFloat("scale##1", &noise_main_scale, 1.0f, 128.0f);
 			ImGui::SliderFloat3("offset##1", &noise_main_offset[0], 0.0f, 1.0f);
 			ImGui::Text("weather");
-			ImGui::SliderFloat("scale##2", &noise_weather_scale, 1.0f, 128.0f);
-			ImGui::SliderFloat("weight##1", &noise_weather_weight, 0.0f, 1.0f);
+			ImGui::SliderFloat("scale##2", &noise_weather_scale, 1.0f, 512.0f);
 			ImGui::SliderFloat2("offset##2", &noise_weather_offset[0], 0.0f, 1.0f);
 			ImGui::Text("detail");
-			ImGui::SliderFloat("scale##3", &noise_detail_scale, 1.0f, 16.0f);
+			ImGui::SliderFloat("scale##3", &noise_detail_scale, 1.0f, 32.0f);
 			ImGui::SliderFloat("weight##2", &noise_detail_weight, 0.0f, 1.0f);
 			ImGui::SliderFloat3("offset##3", &noise_detail_offset[0], 0.0f, 1.0f);
 			ImGui::Separator();
@@ -518,8 +517,8 @@ int main(int argc, char* argv[]) {
 				imgui_help_marker("should be a multiple of eight to avoid\npossible artifacts.", true);
 				ImGui::SliderFloat("persistence##3", &noise_detail_persistence, 0.0f, 1.0f); ImGui::SameLine();
 				imgui_help_marker("factor by which layers are mixed up.\n"
-													"the higher the value, the more mixed up\nthey'll be.\n"
-													"if the value is zero, only the first\nlayer will be accounted for.");
+						"the higher the value, the more mixed up\nthey'll be.\n"
+						"if the value is zero, only the first\nlayer will be accounted for.");
 				ImGui::Text("subdivisions per texture layer"); ImGui::SameLine();
 				imgui_help_marker("cube root of the number of cell divisions\nfor each layer of the texture.");
 				ImGui::InputInt("A##3", &noise_detail_subdivisions_a);
@@ -538,10 +537,13 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		// ---- atmosphere ---- //
+		// ---- lighting ---- //
 
-		if (ImGui::CollapsingHeader("atmosphere")) {
-			ImGui::Checkbox("physically accurate atmosphere", &render_sky);
+		if (ImGui::CollapsingHeader("lighting")) {
+			ImGui::Checkbox("physically accurate sky", &render_sky);
+			if (!render_sky) {
+				ImGui::ColorEdit3("background color", &background_color[0]);
+			}
 			ImGui::Separator();
 			ImGui::Text("light direction");
 			bool light_direction_method_modified = ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
@@ -574,25 +576,21 @@ int main(int argc, char* argv[]) {
 				// update in shader
 				main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 				if (light_direction[0] == 0.0f) {
-					inverse_light_direction[0] = 0.0f;
+					inverse_light_direction[0] = 1.0f;
 				} else {
 					inverse_light_direction[0] = 1.0f / light_direction[0];
 				}
 				if (light_direction[1] == 0.0f) {
-					inverse_light_direction[1] = 0.0f;
+					inverse_light_direction[1] = 1.0f;
 				} else {
 					inverse_light_direction[1] = 1.0f / light_direction[1];
 				}
 				if (light_direction[2] == 0.0f) {
-					inverse_light_direction[2] = 0.0f;
+					inverse_light_direction[2] = 1.0f;
 				} else {
 					inverse_light_direction[2] = 1.0f / light_direction[2];
 				}
 				main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
-			}
-			if (render_sky) {
-			} else {
-				ImGui::ColorEdit3("background color", &background_color[0]);
 			}
 		}
 
@@ -739,7 +737,6 @@ int main(int argc, char* argv[]) {
 		main_shader->set1f("noise_main_scale", noise_main_scale);
 		main_shader->set3f("noise_main_offset", noise_main_offset[0], noise_main_offset[1], noise_main_offset[2]);
 		main_shader->set1f("noise_weather_scale", noise_weather_scale);
-		main_shader->set1f("noise_weather_weight", noise_weather_weight);
 		main_shader->set2f("noise_weather_offset", noise_weather_offset[0], noise_weather_offset[1]);
 		main_shader->set1f("noise_detail_scale", noise_detail_scale);
 		main_shader->set1f("noise_detail_weight", noise_detail_weight);

@@ -122,7 +122,7 @@ void main() {
 	// invert
 	noise_sum = 1.0 - noise_sum;
 	// accentuate dark tones
-	noise_sum = noise_sum * noise_sum; // noise_sum^2
+	noise_sum = noise_sum * noise_sum * noise_sum * noise_sum; // noise_sum^2
 	// write to texture
 	imageStore(output_texture, ivec3(gl_GlobalInvocationID), vec4(noise_sum));
 }
