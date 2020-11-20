@@ -48,7 +48,6 @@ struct cloud {
 	float cloud_absorption;
 	float cloud_density_threshold;
 	float cloud_density_multiplier;
-	float cloud_volume_edge_fade_distance;
 	float cloud_location[3];
 	float cloud_volume[3];
 	// noise - main
@@ -72,17 +71,94 @@ struct cloud {
 	float noise_detail_weight;
 };
 
-/*cloud clouds[1] = {
+cloud clouds[] = {
+	// ---- cumulus ---- //
 	{
-		0.1f,
+		0.1f, // absorption
+		0.309f, // threshold
+		4.0f, // density multiplier
+		{ 0.0f, 100.0f, 0.0f }, // location
+		{ 100.0f, 10.0f, 100.0f }, // volume
+		// main noise
+		4,
+		16,
+		64,
+		1.0f,
+		64.0f,
+		// weather noise
+		4,
+		64,
+		1024,
 		0.4f,
-		7.0f,
-		10.0f,
-		{0.0f, 50.0f, 0.0f},
-		{100.0f, 10.0f, 100.0f},
-		
+		128.0f,
+		// detail noise
+		3,
+		6,
+		9,
+		1.0f,
+		12.0f,
+		0.14f // weight
+	},
+	// ---- stratocumulus ---- //
+	{
+		0.12f, // absorption
+		0.32f, // threshold
+		4.0f, // density multiplier
+		{ 0.0f, 105.0f, 0.0f }, // location
+		{ 100.0f, 5.0f, 100.0f }, // volume
+		// main noise
+		8,
+		32,
+		128,
+		0.6f,
+		32.0f,
+		// weather noise
+		8,
+		16,
+		32,
+		0.8f,
+		64.0f,
+		// detail noise
+		3,
+		6,
+		9,
+		1.0f,
+		12.0f,
+		0.14f // weight
+	},
+	// ---- stratus ---- //
+	{
+		0.2f, // absorption
+		0.128f, // threshold
+		4.0f, // density multiplier
+		{ 0.0f, 100.0f, 0.0f }, // location
+		{ 100.0f, 3.0f, 100.0f }, // volume
+		// main noise
+		4,
+		16,
+		64,
+		1.0f,
+		64.0f,
+		// weather noise
+		3,
+		9,
+		27,
+		1.0f,
+		128.0f,
+		// detail noise
+		3,
+		6,
+		9,
+		1.0f,
+		32.0f,
+		0.256f // weight
 	}
-};*/
+	// ---- cumulonimbus ---- //
+	// ---- altomumulus ---- //
+	// ---- cirrostratus ---- //
+	// ---- cirrocumulus ---- //
+	// ---- cirrus ---- //
+};
 
 // -------- 青 一 a o -------- //
 
@@ -108,13 +184,13 @@ int main(int argc, char* argv[]) {
 	GLFWwindow* window;
 	// clouds
 	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.303f;
+	float cloud_density_threshold = 0.309f;
 	float cloud_density_multiplier = 4.0f;
-	float cloud_volume_edge_fade_distance = 4.0f;
+	float cloud_volume_edge_fade_distance = 8.0f;
 	float cloud_location[3] = { 0.0f, 100.0f, 0.0f };
 	float cloud_volume[3] = { 100.0f, 10.0f, 100.0f };
 	// noise - main
-	int noise_main_resolution = 512;
+	int noise_main_resolution = 256;
 	int noise_main_subdivisions_a = 4;
 	int noise_main_subdivisions_b = 16;
 	int noise_main_subdivisions_c = 64;
@@ -122,7 +198,7 @@ int main(int argc, char* argv[]) {
 	float noise_main_scale = 64.0f;
 	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// noise - weather
-	int noise_weather_resolution = 4096;
+	int noise_weather_resolution = 2048;
 	int noise_weather_subdivisions_a = 4;
 	int noise_weather_subdivisions_b = 64;
 	int noise_weather_subdivisions_c = 1024;
@@ -138,6 +214,39 @@ int main(int argc, char* argv[]) {
 	float noise_detail_scale = 12.0f;
 	float noise_detail_weight = 0.14f;
 	float noise_detail_offset[3] = { 0.0f, 0.0f, 0.0f };
+
+	// debug ---- load
+	int load = 2;
+	{
+		cloud model = clouds[load];
+		cloud_absorption = model.cloud_absorption;
+		cloud_density_threshold = model.cloud_density_threshold;
+		cloud_density_multiplier = model.cloud_density_multiplier;
+		cloud_location[0] = model.cloud_location[0];
+		cloud_location[1] = model.cloud_location[1];
+		cloud_location[2] = model.cloud_location[2];
+		cloud_volume[0] = model.cloud_volume[0];
+		cloud_volume[1] = model.cloud_volume[1];
+		cloud_volume[2] = model.cloud_volume[2];
+		noise_main_subdivisions_a = model.noise_main_subdivisions_a;
+		noise_main_subdivisions_b = model.noise_main_subdivisions_b;
+		noise_main_subdivisions_c = model.noise_main_subdivisions_c;
+		noise_main_persistence = model.noise_main_persistence;
+		noise_main_scale = model.noise_main_scale;
+		noise_weather_subdivisions_a = model.noise_weather_subdivisions_a;
+		noise_weather_subdivisions_b = model.noise_weather_subdivisions_b;
+		noise_weather_subdivisions_c = model.noise_weather_subdivisions_c;
+		noise_weather_persistence = model.noise_weather_persistence;
+		noise_weather_scale = model.noise_weather_scale;
+		noise_detail_subdivisions_a = model.noise_detail_subdivisions_a;
+		noise_detail_subdivisions_b = model.noise_detail_subdivisions_b;
+		noise_detail_subdivisions_c = model.noise_detail_subdivisions_c;
+		noise_detail_persistence = model.noise_detail_persistence;
+		noise_detail_scale = model.noise_detail_scale;
+		noise_detail_weight = model.noise_detail_weight;
+	}
+	// debug ---- load
+
 	// wind
 	float wind_direction[3];
 	{
@@ -429,7 +538,47 @@ int main(int argc, char* argv[]) {
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("load")) {
-			// magic
+			int i = 0;
+			for (; i < IM_ARRAYSIZE(cloud_models); ++i) {
+				if (cloud_model_current == cloud_models[i]) {
+					break;
+				}
+			}
+			cloud model = clouds[i];
+			cloud_absorption = model.cloud_absorption;
+			cloud_density_threshold = model.cloud_density_threshold;
+			cloud_density_multiplier = model.cloud_density_multiplier;
+			cloud_location[0] = model.cloud_location[0];
+			cloud_location[1] = model.cloud_location[1];
+			cloud_location[2] = model.cloud_location[2];
+			cloud_volume[0] = model.cloud_volume[0];
+			cloud_volume[1] = model.cloud_volume[1];
+			cloud_volume[2] = model.cloud_volume[2];
+			noise_main_subdivisions_a = model.noise_main_subdivisions_a;
+			noise_main_subdivisions_b = model.noise_main_subdivisions_b;
+			noise_main_subdivisions_c = model.noise_main_subdivisions_c;
+			noise_main_persistence = model.noise_main_persistence;
+			noise_main_scale = model.noise_main_scale;
+			noise_weather_subdivisions_a = model.noise_weather_subdivisions_a;
+			noise_weather_subdivisions_b = model.noise_weather_subdivisions_b;
+			noise_weather_subdivisions_c = model.noise_weather_subdivisions_c;
+			noise_weather_persistence = model.noise_weather_persistence;
+			noise_weather_scale = model.noise_weather_scale;
+			noise_detail_subdivisions_a = model.noise_detail_subdivisions_a;
+			noise_detail_subdivisions_b = model.noise_detail_subdivisions_b;
+			noise_detail_subdivisions_c = model.noise_detail_subdivisions_c;
+			noise_detail_persistence = model.noise_detail_persistence;
+			noise_detail_scale = model.noise_detail_scale;
+			noise_detail_weight = model.noise_detail_weight;
+			main_shader->unbind();
+			bake_noise_main(noise_main_id, compute_shader_main, noise_main_resolution, noise_main_persistence, noise_main_subdivisions_a, noise_main_subdivisions_b, noise_main_subdivisions_c);
+			bake_noise_weather(noise_weather_id, compute_shader_weather, noise_weather_resolution, noise_weather_persistence, noise_weather_subdivisions_a, noise_weather_subdivisions_b, noise_weather_subdivisions_c);
+			bake_noise_main(noise_detail_id, compute_shader_main, noise_detail_resolution, noise_detail_persistence, noise_detail_subdivisions_a, noise_detail_subdivisions_b, noise_detail_subdivisions_c);
+			main_shader->bind();
+			main_shader->set1i("noise_main_texture", noise_main_id);
+			main_shader->set1i("noise_weather_texture", noise_weather_id);
+			main_shader->set1i("noise_detail_texture", noise_detail_id);
+			main_shader->unbind();
 		}
 		if (ImGui::CollapsingHeader("cloud")) {
 			ImGui::InputFloat3("volume", &cloud_volume[0]); ImGui::SameLine();
