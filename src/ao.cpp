@@ -1,7 +1,9 @@
 /*
  * MIT License
- * Copyright (c) 2020 Pablo Peñarroja
+ * Copyright (c) 2020 Pablo Peñarroja Millán
  */
+
+/* ~~~~~~~~~~~~~~~~~ 青 ~~~~~~~~~~~~~~~~~ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,14 +16,23 @@
 #include <cstdio>
 #include <vector>
 #include <map>
+
+#include <opencv2/videoio.hpp>
+#include <opencv2/opencv.hpp>
+
 #include <GL/glew.h>
+
 #include <GLFW/glfw3.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_glfw.h"
+
 #include "shader.h"
+
+#include "program_data.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
@@ -40,7 +51,7 @@ void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolutio
 
 // -------- c l o u d s --------//
 
-const char* cloud_models[] = { "cumulus", "stratocumulus", "stratus", "cumulonimbus", "altomumulus", "cirrostratus", "cirrocumulus", "cirrus" };
+const char* cloud_models[] = { "cumulus", "stratocumulus", "stratus", "altocumulus", };
 static const char* cloud_model_current = "cumulus";
 
 struct cloud {
@@ -74,9 +85,9 @@ struct cloud {
 cloud clouds[] = {
 	// ---- cumulus ---- //
 	{
-		0.1f, // absorption
+		0.92f, // absorption
 		0.309f, // threshold
-		4.0f, // density multiplier
+		8.0f, // density multiplier
 		{ 0.0f, 100.0f, 0.0f }, // location
 		{ 100.0f, 10.0f, 100.0f }, // volume
 		// main noise
@@ -87,9 +98,9 @@ cloud clouds[] = {
 		64.0f,
 		// weather noise
 		4,
-		64,
-		1024,
-		0.4f,
+		32,
+		128,
+		0.72f,
 		128.0f,
 		// detail noise
 		3,
@@ -97,11 +108,11 @@ cloud clouds[] = {
 		9,
 		1.0f,
 		12.0f,
-		0.14f // weight
+		0.144f // weight
 	},
-	// ---- stratocumulus ---- //
+	// ---- stratocumulus ---- // 
 	{
-		0.12f, // absorption
+		0.9f, // absorption
 		0.32f, // threshold
 		4.0f, // density multiplier
 		{ 0.0f, 105.0f, 0.0f }, // location
@@ -128,7 +139,7 @@ cloud clouds[] = {
 	},
 	// ---- stratus ---- //
 	{
-		0.2f, // absorption
+		0.7f, // absorption
 		0.128f, // threshold
 		4.0f, // density multiplier
 		{ 0.0f, 100.0f, 0.0f }, // location
@@ -152,21 +163,48 @@ cloud clouds[] = {
 		1.0f,
 		32.0f,
 		0.256f // weight
+	},
+	// ---- altocumulus ---- //
+	{
+		0.8f, // absorption
+		0.316f, // threshold
+		4.0f, // density multiplier
+		{ 0.0f, 100.0f, 0.0f }, // location
+		{ 100.0f, 4.0f, 100.0f }, // volume
+		// main noise
+		16,
+		24,
+		32,
+		1.0f,
+		48.0f,
+		// weather noise
+		12,
+		24,
+		36,
+		0.5f,
+		64.0f,
+		// detail noise
+		3,
+		6,
+		9,
+		1.0f,
+		12.0f,
+		0.256f // weight
 	}
-	// ---- cumulonimbus ---- //
-	// ---- altomumulus ---- //
-	// ---- cirrostratus ---- //
+	// -> must implement different kind of noise for these.
 	// ---- cirrocumulus ---- //
 	// ---- cirrus ---- //
 };
 
-// -------- 青 一 a o -------- //
+// -------- i n p u t -------- //
 
 int cursor_old_x = 0;
 int cursor_old_y = 0;
 int cursor_delta_x = 0;
 int cursor_delta_y = 0;
 void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+
+// -------- 青 一 a o -------- //
 
 int main(int argc, char* argv[]) {
 
@@ -182,42 +220,48 @@ int main(int argc, char* argv[]) {
 	shader* compute_shader_weather;
 	shader* main_shader;
 	GLFWwindow* window;
+	// export
+	bool recording = 0;
+	int recording_fps = 60;
+	unsigned long long recording_start_frame;
+	cv::VideoWriter recording_output;
+	std::chrono::system_clock::time_point recording_timer;
 	// clouds
-	float cloud_absorption = 0.1f;
-	float cloud_density_threshold = 0.309f;
-	float cloud_density_multiplier = 4.0f;
+	float cloud_absorption;
+	float cloud_density_threshold;
+	float cloud_density_multiplier;
 	float cloud_volume_edge_fade_distance = 8.0f;
-	float cloud_location[3] = { 0.0f, 100.0f, 0.0f };
-	float cloud_volume[3] = { 100.0f, 10.0f, 100.0f };
+	float cloud_location[3];
+	float cloud_volume[3];
 	// noise - main
 	int noise_main_resolution = 256;
-	int noise_main_subdivisions_a = 4;
-	int noise_main_subdivisions_b = 16;
-	int noise_main_subdivisions_c = 64;
-	float noise_main_persistence = 1.0f;
-	float noise_main_scale = 64.0f;
+	int noise_main_subdivisions_a;
+	int noise_main_subdivisions_b;
+	int noise_main_subdivisions_c;
+	float noise_main_persistence;
+	float noise_main_scale;
 	float noise_main_offset[3] = { 0.0f, 0.0f, 0.0f };
 	// noise - weather
 	int noise_weather_resolution = 2048;
-	int noise_weather_subdivisions_a = 4;
-	int noise_weather_subdivisions_b = 64;
-	int noise_weather_subdivisions_c = 1024;
-	float noise_weather_persistence = 0.4f;
-	float noise_weather_scale = 128.0f;
+	int noise_weather_subdivisions_a;
+	int noise_weather_subdivisions_b;
+	int noise_weather_subdivisions_c;
+	float noise_weather_persistence;
+	float noise_weather_scale;
 	float noise_weather_offset[2] = { 0.0f, 0.0f };
 	// noise - detail
 	int noise_detail_resolution = 128;
-	int noise_detail_subdivisions_a = 3;
-	int noise_detail_subdivisions_b = 6;
-	int noise_detail_subdivisions_c = 9;
-	float noise_detail_persistence = 1.0f;
-	float noise_detail_scale = 12.0f;
-	float noise_detail_weight = 0.14f;
+	int noise_detail_subdivisions_a;
+	int noise_detail_subdivisions_b;
+	int noise_detail_subdivisions_c;
+	float noise_detail_persistence;
+	float noise_detail_scale;
+	float noise_detail_weight;
 	float noise_detail_offset[3] = { 0.0f, 0.0f, 0.0f };
 
-	// debug ---- load
-	int load = 2;
+	// load model
 	{
+		int load = 0;
 		cloud model = clouds[load];
 		cloud_absorption = model.cloud_absorption;
 		cloud_density_threshold = model.cloud_density_threshold;
@@ -245,7 +289,6 @@ int main(int argc, char* argv[]) {
 		noise_detail_scale = model.noise_detail_scale;
 		noise_detail_weight = model.noise_detail_weight;
 	}
-	// debug ---- load
 
 	// wind
 	float wind_direction[3];
@@ -340,13 +383,17 @@ int main(int argc, char* argv[]) {
 	}
 
 	// ---- init shaders ---- //
+	
+	// allocate shader data in memory
+	program_data* data = new program_data();
 
 	// compute shaders
-	compute_shader_main = new shader("./compute_main.glsl");
-	compute_shader_weather = new shader("./compute_weather.glsl");
+	compute_shader_main = new shader(data->compute_main, false);
+	compute_shader_weather = new shader(data->compute_weather, false);
 
 	// normal shader
-	main_shader = new shader("./vertex.glsl", "./fragment.glsl");
+	std::cout << "what";
+	main_shader = new shader(data->vertex, data->fragment, false);
 	main_shader->bind();
 	main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 	main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
@@ -354,6 +401,9 @@ int main(int argc, char* argv[]) {
 	main_shader->set1i("render_volume_samples", render_volume_samples);
 	main_shader->set1i("render_in_scatter_samples", render_in_scatter_samples);
 	main_shader->unbind();
+
+	// deallocate shader data from memory
+	delete data;
 
 	//---- init imgui ----//
 
@@ -504,6 +554,21 @@ int main(int argc, char* argv[]) {
 			main_shader->bind();
 			glBindVertexArray(vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		// write to video buffer if the user is recording
+		if (recording) {
+			cv::Mat pixels(resolution[1], resolution[0], CV_8UC3);
+			glReadPixels(0, 0, resolution[0], resolution[1], GL_RGB, GL_UNSIGNED_BYTE, pixels.data);
+			cv::Mat cv_pixels(resolution[1], resolution[0], CV_8UC3);
+			for( int y = 0; y < resolution[1]; ++y) {
+				for(int x = 0; x < resolution[0]; ++x) {
+					cv_pixels.at<cv::Vec3b>(y, x)[2] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[0];
+					cv_pixels.at<cv::Vec3b>(y, x)[1] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[1];
+					cv_pixels.at<cv::Vec3b>(y, x)[0] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[2];
+				}
+			}
+			recording_output << cv_pixels;
 		}
 
 		// --------------- //
@@ -798,26 +863,35 @@ int main(int argc, char* argv[]) {
 			ImGui::SliderFloat("weight", &render_shadowing_weight, 0.0f, 1.0f);
 		}
 
+		// ---- export ---- //
+
+		if (ImGui::CollapsingHeader("export")) {
+			if (!recording) {
+				ImGui::InputInt("output fps##recording", &recording_fps);
+				if (ImGui::Button("start recording")) {
+					recording = true;
+					recording_output.open("render.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), recording_fps, cv::Size(resolution[0], resolution[1]));
+					recording_timer = std::chrono::system_clock::now();
+					recording_start_frame = frame;
+				}
+			} else {
+				// info about recording session
+				ImGui::Text("recording framerate: %d fps", recording_fps);
+				std::chrono::duration<double, std::milli> millis_ellapsed(std::chrono::system_clock::now() - recording_timer);
+				unsigned long long frames_ellapsed = frame - recording_start_frame;
+				ImGui::Text("frames written:      %d frames", frames_ellapsed);
+				ImGui::Text("real time ellapsed:  %.2f seconds", millis_ellapsed.count() / 1000.0f);
+				ImGui::Text("video time recorded: %.2f seconds", (float)frames_ellapsed / recording_fps);
+				// stop?
+				if (ImGui::Button("stop recording")) {
+					recording = false;
+					recording_output.release();
+				}
+			}
+		}
 
 		imgui_window_is_focused |= ImGui::IsWindowFocused();
 		ImGui::End();
-
-		// ---- settings ---- //
-
-		if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_None)) {
-			if (ImGui::BeginTabItem("rendering")) {
-				ImGui::SliderInt("fps", &fps, 10, 60);
-				if (ImGui::Button("apply changes")) {
-					millis_per_frame = 1000 / fps;
-				}
-				ImGui::EndTabItem();
-			}
-			if (ImGui::BeginTabItem("cloud")) {
-				ImGui::EndTabItem();
-			}
-			ImGui::EndTabBar();
-		}
-		imgui_window_is_focused |= ImGui::IsWindowFocused();
 
 		// check for mouse drag input (don't move this block of code out of imgui rendering scope)
 		if (!imgui_window_is_focused && (cursor_delta_x || cursor_delta_y)) {
@@ -843,7 +917,7 @@ int main(int argc, char* argv[]) {
 		const float distance = 10.0f;
 		ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
 		ImGui::SetNextWindowPos( { distance, distance }, ImGuiCond_Always, { 0.0f, 0.0f });
-		ImGui::SetNextWindowBgAlpha(0.2f);
+		ImGui::SetNextWindowBgAlpha(0.8f);
 		if (ImGui::Begin("ao by soybin", NULL, window_flags)) {
 			ImGui::Text("ao by soybin");
 			ImGui::Text("~~~~~~~~~~~~");
@@ -870,7 +944,7 @@ int main(int argc, char* argv[]) {
 
 		// cloud
 		main_shader->set1f("cloud_volume_edge_fade_distance", cloud_volume_edge_fade_distance);
-		main_shader->set1f("cloud_absorption", 1.0f - cloud_absorption);
+		main_shader->set1f("cloud_absorption", cloud_absorption);
 		main_shader->set1f("cloud_density_threshold", cloud_density_threshold);
 		main_shader->set1f("cloud_density_multiplier", cloud_density_multiplier);
 		main_shader->set3f("cloud_location", cloud_location[0], cloud_location[1], cloud_location[2]);

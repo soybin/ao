@@ -8,14 +8,25 @@
 #include <GL/glew.h>
 #include "shader.h"
 
-std::string shader::parse_shader(const char* dir) {
+std::string shader::parse_shader(const char* dir, bool write_string) {
   std::ifstream file(dir);
   std::string line, ret = "";
+
+	std::ofstream outto;
+	if (write_string) {
+		std::string ss(dir);
+		ss += "STRING";
+		outto = std::ofstream(ss.c_str());
+	}
     
   for (; std::getline(file, line); ret += '\n') {
     ret += line;
+		if (write_string) {
+			// "...\n" -> gotta learn regex
+			outto << char(34) << line << char(92) << "n" << char(34) << '\n';
+		}
   }
-    
+
   return ret;
 }
 
@@ -58,8 +69,13 @@ int shader::get_uniform_location(const char* name) {
   return location;
 }
 
-shader::shader(std::string compute) {
-	std::string strc = parse_shader(compute.c_str());
+shader::shader(std::string compute, bool read_from_file) {
+	std::string strc;
+	if (read_from_file) {
+		strc = parse_shader(compute.c_str(), false);
+	} else {
+		strc = compute.c_str();
+	}
 	unsigned int program = glCreateProgram();
 	unsigned int cs = compile_shader(GL_COMPUTE_SHADER, strc.c_str());
 	glAttachShader(program, cs);
@@ -69,25 +85,30 @@ shader::shader(std::string compute) {
 	program_id = program;
 }
 
-shader::shader(std::string vert, std::string frag) {
-	std::string strv;
-	if (vert.size()) strv = parse_shader(vert.c_str());
-  std::string strf = parse_shader(frag.c_str());
+shader::shader(std::string vert, std::string frag, bool read_from_file) {
+	std::string strv, strf;
+	if (read_from_file) {
+		if (vert.size()) strv = parse_shader(vert.c_str(), false);
+		strf = parse_shader(frag.c_str(), true);
+	} else {
+		strv = vert.c_str();
+		strf = frag.c_str();
+	}
 
-  unsigned int program = glCreateProgram();
-  unsigned int vs;
+	unsigned int program = glCreateProgram();
+	unsigned int vs;
 	if (vert.size()) vs = compile_shader(GL_VERTEX_SHADER, strv.c_str());
-  unsigned int fs = compile_shader(GL_FRAGMENT_SHADER, strf.c_str());
+	unsigned int fs = compile_shader(GL_FRAGMENT_SHADER, strf.c_str());
 
-  if (vert.size()) glAttachShader(program, vs);
-  glAttachShader(program, fs);
-  glLinkProgram(program);
-  glValidateProgram(program);
+	if (vert.size()) glAttachShader(program, vs);
+	glAttachShader(program, fs);
+	glLinkProgram(program);
+	glValidateProgram(program);
 
-  if (vert.size()) glDeleteShader(vs);
-  glDeleteShader(fs);
+	if (vert.size()) glDeleteShader(vs);
+	glDeleteShader(fs);
 
-  program_id = program;
+	program_id = program;
 }
 
 shader::~shader() {

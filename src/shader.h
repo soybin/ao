@@ -13,13 +13,13 @@ class shader {
 	private:
 		std::unordered_map<const char*, unsigned int> uniform_map;
 
-		std::string parse_shader(const char* dir);
+		std::string parse_shader(const char* dir, bool write_string);
 		int compile_shader(unsigned int type, const char* src);
 		int get_uniform_location(const char* name);
 	public:
 		unsigned int program_id;
-		shader(std::string compute);
-		shader(std::string vert, std::string frag);
+		shader(std::string compute, bool read_from_file = true);
+		shader(std::string vert, std::string frag, bool read_from_file = true);
 		~shader();
 
 		void bind();
