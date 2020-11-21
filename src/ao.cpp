@@ -18,6 +18,7 @@
 #include <map>
 
 #include <opencv2/videoio.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/opencv.hpp>
 
 #include <GL/glew.h>
@@ -36,14 +37,12 @@
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
+// -------- h e l p e r s -------- //
+
+static void write_pixels_to_mat(cv::Mat& ref, int width, int height);
 static void imgui_help_marker(const char* desc, bool warning = false);
 
 // -------- n o i s e -------- //
-
-/*
- * worley noise function:
- * persistance = noisy doisy
- */
 
 void bake_noise_main(unsigned int &texture_id, shader* compute, int resolution, float persistance, int subdivisions_a, int subdivisions_b, int subdivisions_c);
 
@@ -220,12 +219,6 @@ int main(int argc, char* argv[]) {
 	shader* compute_shader_weather;
 	shader* main_shader;
 	GLFWwindow* window;
-	// export
-	bool recording = 0;
-	int recording_fps = 60;
-	unsigned long long recording_start_frame;
-	cv::VideoWriter recording_output;
-	std::chrono::system_clock::time_point recording_timer;
 	// clouds
 	float cloud_absorption;
 	float cloud_density_threshold;
@@ -348,6 +341,17 @@ int main(int argc, char* argv[]) {
 	float render_shadowing_max_distance = 8.0f;
 	float render_shadowing_weight = 0.64;
 	// export
+	char image_name[32] = "ao_image";
+	const char* image_format = ".png";
+	const char* image_formats[] = { ".png", ".jpg", ".ppm", ".bmp" };
+	bool video = 0;
+	int video_fps = 60;
+	unsigned long long video_start_frame;
+	char video_name[32] = "ao_video";
+	const char* video_format = ".avi";
+	const char* video_formats[] = { ".avi", ".mp4" };
+	cv::VideoWriter video_output;
+	std::chrono::system_clock::time_point video_timer;
 
 
 	// ---- init glfw ---- //
@@ -548,27 +552,16 @@ int main(int argc, char* argv[]) {
 			continue;
 		}
 
-		// draw fragment to screen if required to.
-		// otherwise, draw last fragment
-		if (frame % 1 == 0) {
-			main_shader->bind();
-			glBindVertexArray(vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-		}
+		// draw fragment to screen
+		main_shader->bind();
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 
-		// write to video buffer if the user is recording
-		if (recording) {
+		// write to video buffer if the user is video
+		if (video) {
 			cv::Mat pixels(resolution[1], resolution[0], CV_8UC3);
-			glReadPixels(0, 0, resolution[0], resolution[1], GL_RGB, GL_UNSIGNED_BYTE, pixels.data);
-			cv::Mat cv_pixels(resolution[1], resolution[0], CV_8UC3);
-			for( int y = 0; y < resolution[1]; ++y) {
-				for(int x = 0; x < resolution[0]; ++x) {
-					cv_pixels.at<cv::Vec3b>(y, x)[2] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[0];
-					cv_pixels.at<cv::Vec3b>(y, x)[1] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[1];
-					cv_pixels.at<cv::Vec3b>(y, x)[0] = pixels.at<cv::Vec3b>(resolution[1] - y - 1, x)[2];
-				}
-			}
-			recording_output << cv_pixels;
+			write_pixels_to_mat(pixels, resolution[0], resolution[1]);
+			video_output << pixels;
 		}
 
 		// --------------- //
@@ -866,26 +859,61 @@ int main(int argc, char* argv[]) {
 		// ---- export ---- //
 
 		if (ImGui::CollapsingHeader("export")) {
-			if (!recording) {
-				ImGui::InputInt("output fps##recording", &recording_fps);
+			ImGui::Text("image");
+			ImGui::InputText("name##image", image_name, 32);
+			if (ImGui::BeginCombo("format##image", image_format)) {
+				for (int n = 0; n < IM_ARRAYSIZE(image_formats); ++n) {
+					bool is_selected = (image_format == image_formats[n]);
+					if (ImGui::Selectable(image_formats[n], is_selected)) {
+						image_format = image_formats[n];
+					}
+					if (is_selected) {
+						ImGui::SetItemDefaultFocus();	
+					}
+				}
+				ImGui::EndCombo();
+			}
+			if (ImGui::Button("save")) {
+				cv::Mat pixels(resolution[1], resolution[0], CV_8UC3);
+				write_pixels_to_mat(pixels, resolution[0], resolution[1]);
+				cv::imwrite(std::string(image_name) + std::string(image_format), pixels);
+			}
+			ImGui::Separator();
+			ImGui::Text("video");
+			ImGui::InputText("name##video", video_name, 32);
+			if (!video) {
+				if (ImGui::BeginCombo("format##video", video_format)) {
+					for (int n = 0; n < IM_ARRAYSIZE(video_formats); ++n) {
+						bool is_selected = (video_format == video_formats[n]);
+						if (ImGui::Selectable(video_formats[n], is_selected)) {
+							video_format = video_formats[n];
+						}
+						if (is_selected) {
+							ImGui::SetItemDefaultFocus();	
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::InputInt("output fps##video", &video_fps);
 				if (ImGui::Button("start recording")) {
-					recording = true;
-					recording_output.open("render.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), recording_fps, cv::Size(resolution[0], resolution[1]));
-					recording_timer = std::chrono::system_clock::now();
-					recording_start_frame = frame;
+					video = true;
+					video_output.open(std::string(video_name) + std::string(video_format), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), video_fps, cv::Size(resolution[0], resolution[1]));
+					video_timer = std::chrono::system_clock::now();
+					video_start_frame = frame;
 				}
 			} else {
-				// info about recording session
-				ImGui::Text("recording framerate: %d fps", recording_fps);
-				std::chrono::duration<double, std::milli> millis_ellapsed(std::chrono::system_clock::now() - recording_timer);
-				unsigned long long frames_ellapsed = frame - recording_start_frame;
+				// info about video session
+				ImGui::Text("format:              %s", video_format);
+				ImGui::Text("outpute framerate:   %d fps", video_fps);
+				std::chrono::duration<double, std::milli> millis_ellapsed(std::chrono::system_clock::now() - video_timer);
+				unsigned long long frames_ellapsed = frame - video_start_frame;
 				ImGui::Text("frames written:      %d frames", frames_ellapsed);
 				ImGui::Text("real time ellapsed:  %.2f seconds", millis_ellapsed.count() / 1000.0f);
-				ImGui::Text("video time recorded: %.2f seconds", (float)frames_ellapsed / recording_fps);
+				ImGui::Text("video time recorded: %.2f seconds", (float)frames_ellapsed / video_fps);
 				// stop?
 				if (ImGui::Button("stop recording")) {
-					recording = false;
-					recording_output.release();
+					video = false;
+					video_output.release();
 				}
 			}
 		}
@@ -1181,6 +1209,19 @@ void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolutio
 	glDeleteBuffers(1, &ssbo_a);
 	glDeleteBuffers(1, &ssbo_b);
 	glDeleteBuffers(1, &ssbo_c);
+}
+
+static void write_pixels_to_mat(cv::Mat& ref, int width, int height) {
+	glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, ref.data);
+	cv::Mat pixels(height, width, CV_8UC3);
+	for( int y = 0; y < height; ++y) {
+		for(int x = 0; x < width; ++x) {
+			pixels.at<cv::Vec3b>(y, x)[2] = ref.at<cv::Vec3b>(height - y - 1, x)[0];
+			pixels.at<cv::Vec3b>(y, x)[1] = ref.at<cv::Vec3b>(height - y - 1, x)[1];
+			pixels.at<cv::Vec3b>(y, x)[0] = ref.at<cv::Vec3b>(height - y - 1, x)[2];
+		}
+	}
+	ref = pixels;
 }
 
 static void imgui_help_marker(const char* desc, bool warning) {
