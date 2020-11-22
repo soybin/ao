@@ -829,14 +829,22 @@ int main(int argc, char* argv[]) {
 			ImGui::InputInt2("resolution", &resolution[0]);
 			ImGui::SliderInt("target fps", &fps, 10, 244);
 			if (ImGui::Button("apply")) {
+				int xpos, ypos;
+				glfwGetWindowPos(window, &xpos, &ypos);
 				GLFWmonitor *monitor = glfwGetPrimaryMonitor();
 				const GLFWvidmode *mode = glfwGetVideoMode(monitor);
 				if (fullscreen) {
-					glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-				} else {
-					glfwSetWindowMonitor(window, nullptr, 0, 0, resolution[0], resolution[1], mode->refreshRate);
+					resolution[0] = mode->width;
+					resolution[1] = mode->height;
+					glfwSetWindowMonitor(window, monitor, xpos, ypos, resolution[0], resolution[1], mode->refreshRate);
 				}
+				else {
+					glfwSetWindowMonitor(window, nullptr, xpos, ypos, resolution[0], resolution[1], fps);
+				}
+				// update ideal frame time
 				millis_per_frame = 1000 / fps;
+				// update shaders' viewport
+				glViewport(0, 0, resolution[0], resolution[1]);
 				// update in shader
 				main_shader->bind();
 				main_shader->set2f("resolution", resolution[0], resolution[1]);
