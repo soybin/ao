@@ -3,13 +3,18 @@
 ![rendered with ao](./res/img_01.jpg)
 
 ## what
-a cloud renderer; ao allows for real-time phisically-based rendering of clouds.
+the sky in a binary file; ao allows for real-time, physically-based rendering of clouds.  
+[this]() is a video showing how ao works.  
+and [this]() is an article explaining the technology behind it.  
+i hope you find this to be as interesting as i do.
 
 ## install
-*__check dependencies below__*  
-`git clone https://github.com/soybin/ao
+*__check dependencies below__*
+```
+git clone https://github.com/soybin/ao
 cd ao
-make install`
+make install
+```
 
 ## dependencies
 * [glew](https://github.com/nigels-com/glew)
