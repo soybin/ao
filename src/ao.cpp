@@ -396,7 +396,6 @@ int main(int argc, char* argv[]) {
 	compute_shader_weather = new shader(data->compute_weather, false);
 
 	// normal shader
-	std::cout << "what";
 	main_shader = new shader(data->vertex, data->fragment, false);
 	main_shader->bind();
 	main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);

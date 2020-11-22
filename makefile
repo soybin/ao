@@ -7,9 +7,6 @@ IMGUI = externals/imgui/imgui.cpp externals/imgui/imgui_demo.cpp externals/imgui
 ao: src/ao.cpp
 	$(CCFLAGS) src/ao.cpp src/shader.cpp $(IMGUI) $(OPENCV_LFLAGS) $(LDFLAGS)
 	./ao
-	rm ao
-
-.PHONY: all ao
 
 .PHONY: install
 install: ao

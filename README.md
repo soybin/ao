@@ -1,11 +1,15 @@
-# ao「青」
+# ao「青」— cloud renderer
+
+![rendered with ao](./res/img_01.jpg)
 
 ## what
 a cloud renderer; ao allows for real-time phisically-based rendering of clouds.
-![rendered with ao](./res/img_01.jpg)
 
-## installation
-
+## linux install
+*__look at dependencies below__*
+git clone https://github.com/soybin/ao
+cd ao
+make install
 
 
 ## dependencies
