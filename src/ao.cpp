@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
 	float cloud_location[3];
 	float cloud_volume[3];
 	// noise - main
-	int noise_main_resolution = 256;
+	int noise_main_resolution = 512;
 	int noise_main_subdivisions_a;
 	int noise_main_subdivisions_b;
 	int noise_main_subdivisions_c;

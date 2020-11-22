@@ -2,7 +2,7 @@
 
 ## what
 a cloud renderer; ao allows for real-time phisically-based rendering of clouds.
-![nice quality render](./img/render.gif)
+![rendered with ao](./res/img_01.jpg)
 
 ## installation
 
