@@ -15,7 +15,7 @@ const float SCATTER_IN_STEP = 16.0;
 const float SCATTER_DEPTH_STEP = 4.0;
 const float radius_surface = 6360e3;
 const float radius_atmosphere = 6380e3;
-const float sun_intensity = 8.2;
+const float sun_intensity = 10.0;
 const vec3 rayleigh_coefficient = vec3(58e-7, 135e-7, 331e-7);
 const vec3 mie_coefficient_upper = vec3(2e-5);
 const vec3 mie_coefficient_lower = mie_coefficient_upper * 1.1;
@@ -32,8 +32,9 @@ uniform float noise_zoom;
 uniform vec2 resolution;
 uniform vec3 background_color;
 uniform vec3 box_size;
-uniform vec3 cloud_color;
-uniform vec3 light_direction;
+uniform vec3 light_color;
+uniform vec3 light_direction = vec3(1.0);
+uniform vec3 light_mask = vec3(1.0, 0.98, 0.96);
 uniform vec3 inverse_light_direction;
 uniform vec3 camera_location;
 uniform mat4 view_matrix;
@@ -64,6 +65,7 @@ uniform sampler3D noise_main_texture;
 uniform sampler2D noise_weather_texture;
 uniform sampler3D noise_detail_texture;
 
+// wind
 uniform vec3 wind_vector;
 uniform float wind_main_weight;
 uniform float wind_weather_weight;
@@ -120,6 +122,7 @@ void main() {
 	// value for this ray's direction.
 	// -> provides silver lining when
 	//    looking towards sun.
+
 	float hg_constant = henyey_greenstein(0.2, dot(dir.xyz, light_direction));
 
 	// if ray hits cloud, compute amount of

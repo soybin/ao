@@ -9,7 +9,10 @@
 #include "shader.h"
 
 std::string shader::parse_shader(const char* dir, bool write_string) {
-  std::ifstream file(dir);
+	std::ifstream file(dir);
+	if (!file) {
+		std::cout << "[-] Couldn't find " << dir << std::endl;
+	}
   std::string line, ret = "";
 
 	std::ofstream outto;
@@ -88,8 +91,10 @@ shader::shader(std::string compute, bool read_from_file) {
 shader::shader(std::string vert, std::string frag, bool read_from_file) {
 	std::string strv, strf;
 	if (read_from_file) {
-		if (vert.size()) strv = parse_shader(vert.c_str(), false);
-		strf = parse_shader(frag.c_str(), true);
+		if (vert.size()) {
+			strv = parse_shader(vert.c_str(), false);
+		}
+		strf = parse_shader(frag.c_str(), false);
 	} else {
 		strv = vert.c_str();
 		strf = frag.c_str();

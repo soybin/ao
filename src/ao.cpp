@@ -59,7 +59,7 @@ struct cloud {
 	float cloud_density_threshold;
 	float cloud_density_multiplier;
 	float cloud_location[3];
-	float cloud_volume[3];
+	float cloud_volume_width;
 	// noise - main
 	int noise_main_subdivisions_a;
 	int noise_main_subdivisions_b;
@@ -88,7 +88,7 @@ cloud clouds[] = {
 		0.309f, // threshold
 		8.0f, // density multiplier
 		{ 0.0f, 100.0f, 0.0f }, // location
-		{ 100.0f, 10.0f, 100.0f }, // volume
+		10.0f, // volume width
 		// main noise
 		4,
 		16,
@@ -115,7 +115,7 @@ cloud clouds[] = {
 		0.32f, // threshold
 		4.0f, // density multiplier
 		{ 0.0f, 105.0f, 0.0f }, // location
-		{ 100.0f, 5.0f, 100.0f }, // volume
+		5.0f, // volume width
 		// main noise
 		8,
 		32,
@@ -142,7 +142,7 @@ cloud clouds[] = {
 		0.128f, // threshold
 		4.0f, // density multiplier
 		{ 0.0f, 100.0f, 0.0f }, // location
-		{ 100.0f, 3.0f, 100.0f }, // volume
+		3.0f, // volume width
 		// main noise
 		4,
 		16,
@@ -169,7 +169,7 @@ cloud clouds[] = {
 		0.316f, // threshold
 		4.0f, // density multiplier
 		{ 0.0f, 100.0f, 0.0f }, // location
-		{ 100.0f, 4.0f, 100.0f }, // volume
+		4.0f, // volume width
 		// main noise
 		16,
 		24,
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
 	float cloud_density_multiplier;
 	float cloud_volume_edge_fade_distance = 8.0f;
 	float cloud_location[3];
-	float cloud_volume[3];
+	float cloud_volume[3] = { 100.0f, 0.0f, 100.0f };
 	// noise - main
 	int noise_main_resolution = 512;
 	int noise_main_subdivisions_a;
@@ -262,9 +262,7 @@ int main(int argc, char* argv[]) {
 		cloud_location[0] = model.cloud_location[0];
 		cloud_location[1] = model.cloud_location[1];
 		cloud_location[2] = model.cloud_location[2];
-		cloud_volume[0] = model.cloud_volume[0];
-		cloud_volume[1] = model.cloud_volume[1];
-		cloud_volume[2] = model.cloud_volume[2];
+		cloud_volume[1] = model.cloud_volume_width;
 		noise_main_subdivisions_a = model.noise_main_subdivisions_a;
 		noise_main_subdivisions_b = model.noise_main_subdivisions_b;
 		noise_main_subdivisions_c = model.noise_main_subdivisions_c;
@@ -314,6 +312,7 @@ int main(int argc, char* argv[]) {
 	bool render_sky = 1;
 	bool light_any_direction = 0;
 	float time = 15.0f; // 6:00am - 18:00pm
+	float light_color[3] = { 0.9922f, 0.9529f, 0.7765f };
 	float light_direction[3];
 	float inverse_light_direction[3];
 	{
@@ -391,13 +390,21 @@ int main(int argc, char* argv[]) {
 	// allocate shader data in memory
 	program_data* data = new program_data();
 
-	// compute shaders
-	compute_shader_main = new shader(data->compute_main, false);
-	compute_shader_weather = new shader(data->compute_weather, false);
+	// init
+	bool read_shader_from_file = true;
+	if (read_shader_from_file) {
+		compute_shader_main = new shader("./data/compute_main.glsl", true);
+		compute_shader_weather = new shader("./data/compute_weather.glsl", true);
+		main_shader = new shader("./data/vertex.glsl", "./data/fragment.glsl", true);
+	} else {
+		compute_shader_main = new shader(data->compute_main, false);
+		compute_shader_weather = new shader(data->compute_weather, false);
+		main_shader = new shader(data->vertex, data->fragment, false);
+	}
 
-	// normal shader
-	main_shader = new shader(data->vertex, data->fragment, false);
+	// set
 	main_shader->bind();
+	main_shader->set3f("light_color", light_color[0], light_color[1], light_color[2]);
 	main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 	main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
 	main_shader->set2f("resolution", resolution[0], resolution[1]);
@@ -574,7 +581,7 @@ int main(int argc, char* argv[]) {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		// ImGui::ShowDemoWindow();
+		 ImGui::ShowDemoWindow();
 
 		// ---- clouds ---- //
 
@@ -608,9 +615,7 @@ int main(int argc, char* argv[]) {
 			cloud_location[0] = model.cloud_location[0];
 			cloud_location[1] = model.cloud_location[1];
 			cloud_location[2] = model.cloud_location[2];
-			cloud_volume[0] = model.cloud_volume[0];
-			cloud_volume[1] = model.cloud_volume[1];
-			cloud_volume[2] = model.cloud_volume[2];
+			cloud_volume[1] = model.cloud_volume_width;
 			noise_main_subdivisions_a = model.noise_main_subdivisions_a;
 			noise_main_subdivisions_b = model.noise_main_subdivisions_b;
 			noise_main_subdivisions_c = model.noise_main_subdivisions_c;
@@ -751,6 +756,9 @@ int main(int argc, char* argv[]) {
 				ImGui::ColorEdit3("background color", &background_color[0]);
 			}
 			ImGui::Separator();
+			if (ImGui::ColorEdit3("color##1", &light_color[0])) {
+				main_shader->set3f("light_color", light_color[0], light_color[1], light_color[2]);
+			}
 			ImGui::Text("light direction");
 			bool light_direction_method_modified = ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
 			imgui_help_marker("you can modify the exact light direction or\n"
@@ -815,6 +823,8 @@ int main(int argc, char* argv[]) {
 		// ---- camera ----//
 
 		if (ImGui::CollapsingHeader("camera")) {
+			ImGui::Text("hold control, click and drag cursor to\nmove camera");
+			ImGui::Separator();
 			ImGui::SliderFloat("pitch", &camera_pitch, 0.0f, 360.0f);
 			ImGui::SliderFloat("yaw", &camera_yaw, 0.0f, 360.0f);
 			ImGui::InputFloat3("location##2", &camera_location.x, 3);
@@ -929,7 +939,7 @@ int main(int argc, char* argv[]) {
 		ImGui::End();
 
 		// check for mouse drag input (don't move this block of code out of imgui rendering scope)
-		if (!imgui_window_is_focused && (cursor_delta_x || cursor_delta_y)) {
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && !imgui_window_is_focused && (cursor_delta_x || cursor_delta_y)) {
 			camera_yaw += (float)cursor_delta_x * cursor_sensitivity / 10.0f;
 			camera_pitch += (float)cursor_delta_y * cursor_sensitivity / 10.0f;
 			// make sure there's no excess rotation
