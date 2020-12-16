@@ -77,7 +77,6 @@ float remap(float value, float old_low, float old_high, float new_low, float new
 
 // ---- clouds ---- declarations ---- //
 float mie_density(vec3 position);
-float beer_powder(float x);
 float henyey_greenstein(float x, float y);
 float phase(float x);
 float mie_in_scatter(vec3 position);
@@ -107,11 +106,12 @@ void main() {
 		atmosphere_color = atmosphere_scatter(dir.xyz, l);
 	} else {
 		atmosphere_color = background_color;
-	}
+	}* If the ray does intersect the cloud volume, we proceed to 
+
 
 	// ---- mie ---- //
 	
-	float transmittance = 1.0; // transparent
+	float radiance = 1.0; // transparent
 	vec3 color_cloud = vec3(0.0); // accumulated light
 	
 	vec2 march = ray_to_cloud(camera_location, 1.0 / dir.xyz, cloud_location - cloud_volume, cloud_location + cloud_volume);
@@ -133,23 +133,23 @@ void main() {
 		// sample noise density at current
 		// ray position.
 		float density = mie_density(ray_position);
-		// extinguish transmittance using
+		// extinguish radiance using
 		// beer's law -> (e^(-d*deltaX)).
-		transmittance *= exp(-density * distance_per_step);
+		radiance *= exp(-density * distance_per_step);
 		// avoid doing extra loops if it's
 		// already dark.
-		if (transmittance < 0.01) break;
+		if (radiance < 0.01) break;
 		// amount of light in-scattered to 
 		// this point in the cloud;
 		// extinction coefficient when going
 		// through the volume toward the sun.
 		float in_light = mie_in_scatter(ray_position);
 		// add to cloud's surface color
-		color_cloud += density * distance_per_step * in_light * transmittance * hg_constant;
+		color_cloud += density * distance_per_step * in_light * radiance * hg_constant;
 	}
 
 	// return fragment color
-	out_color = vec4((atmosphere_color * transmittance) + color_cloud, 1.0);
+	out_color = vec4((atmosphere_color * radiance) + color_cloud, 1.0);
 }
 
 // --------------------- //
@@ -209,7 +209,7 @@ float mie_in_scatter(vec3 position) {
 	float distance_inside_volume = ray_to_cloud(position, inverse_light_direction, cloud_location - cloud_volume, cloud_location + cloud_volume).y;
 	distance_inside_volume = min(render_shadowing_max_distance, distance_inside_volume);
 	float step_size = distance_inside_volume / float(render_in_scatter_samples);
-	float transparency = 1.0; // transparent
+	float radiance = 1.0; // all light can reach
 	float total_density = 0.0;
 	for (int i = 0; i < render_in_scatter_samples; ++i) {
 		total_density += (mie_density(position) * step_size);

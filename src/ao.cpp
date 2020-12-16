@@ -91,9 +91,9 @@ cloud clouds[] = {
 		10.0f, // volume width
 		// main noise
 		4,
-		16,
-		64,
-		1.0f,
+		8,
+		32,
+		0.72f,
 		64.0f,
 		// weather noise
 		4,
@@ -312,7 +312,6 @@ int main(int argc, char* argv[]) {
 	bool render_sky = 1;
 	bool light_any_direction = 0;
 	float time = 15.0f; // 6:00am - 18:00pm
-	float light_color[3] = { 0.9922f, 0.9529f, 0.7765f };
 	float light_direction[3];
 	float inverse_light_direction[3];
 	{
@@ -391,7 +390,7 @@ int main(int argc, char* argv[]) {
 	program_data* data = new program_data();
 
 	// init
-	bool read_shader_from_file = true;
+	bool read_shader_from_file = false;
 	if (read_shader_from_file) {
 		compute_shader_main = new shader("./data/compute_main.glsl", true);
 		compute_shader_weather = new shader("./data/compute_weather.glsl", true);
@@ -404,7 +403,6 @@ int main(int argc, char* argv[]) {
 
 	// set
 	main_shader->bind();
-	main_shader->set3f("light_color", light_color[0], light_color[1], light_color[2]);
 	main_shader->set3f("light_direction", light_direction[0], light_direction[1], light_direction[2]);
 	main_shader->set3f("inverse_light_direction", inverse_light_direction[0], inverse_light_direction[1], inverse_light_direction[2]);
 	main_shader->set2f("resolution", resolution[0], resolution[1]);
@@ -581,7 +579,9 @@ int main(int argc, char* argv[]) {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		 ImGui::ShowDemoWindow();
+		ImGui::SetNextWindowPos( { 10, 105 }, ImGuiCond_Once);
+		ImGui::SetNextWindowSize(ImVec2(400, resolution[1] - 105 - 10), ImGuiCond_Once);
+		// ImGui::ShowDemoWindow();
 
 		// ---- clouds ---- //
 
@@ -756,9 +756,6 @@ int main(int argc, char* argv[]) {
 				ImGui::ColorEdit3("background color", &background_color[0]);
 			}
 			ImGui::Separator();
-			if (ImGui::ColorEdit3("color##1", &light_color[0])) {
-				main_shader->set3f("light_color", light_color[0], light_color[1], light_color[2]);
-			}
 			ImGui::Text("light direction");
 			bool light_direction_method_modified = ImGui::Checkbox("any direction", &light_any_direction); ImGui::SameLine();
 			imgui_help_marker("you can modify the exact light direction or\n"
@@ -959,7 +956,7 @@ int main(int argc, char* argv[]) {
 
 		// ---- overlay ---- //
 
-		const float distance = 10.0f;
+		const int distance = 10;
 		ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
 		ImGui::SetNextWindowPos( { distance, distance }, ImGuiCond_Always, { 0.0f, 0.0f });
 		ImGui::SetNextWindowBgAlpha(0.8f);
