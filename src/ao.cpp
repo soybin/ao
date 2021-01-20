@@ -50,7 +50,7 @@ void bake_noise_weather(unsigned int &texture_id, shader* compute, int resolutio
 
 // -------- c l o u d s --------//
 
-const char* cloud_models[] = { "cumulus", "stratocumulus", "stratus", "altocumulus", };
+const char* cloud_models[] = { "cumulus", "stratocumulus", "stratus", "altocumulus", "cirrocumulus" };
 static const char* cloud_model_current = "cumulus";
 
 struct cloud {
@@ -164,6 +164,32 @@ cloud clouds[] = {
 		0.256f // weight
 	},
 	// ---- altocumulus ---- //
+	{
+		0.8f, // absorption
+		0.316f, // threshold
+		4.0f, // density multiplier
+		{ 0.0f, 100.0f, 0.0f }, // location
+		4.0f, // volume width
+		// main noise
+		16,
+		24,
+		32,
+		1.0f,
+		48.0f,
+		// weather noise
+		12,
+		24,
+		36,
+		0.5f,
+		64.0f,
+		// detail noise
+		3,
+		6,
+		9,
+		1.0f,
+		12.0f,
+		0.256f // weight
+	},
 	{
 		0.8f, // absorption
 		0.316f, // threshold
