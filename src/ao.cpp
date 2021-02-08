@@ -243,6 +243,7 @@ int main(int argc, char* argv[]) {
 	unsigned int vbo;
 	shader* compute_shader_main;
 	shader* compute_shader_weather;
+	shader* compute_shader_cirro;
 	shader* main_shader;
 	GLFWwindow* window;
 	// clouds
@@ -253,7 +254,7 @@ int main(int argc, char* argv[]) {
 	float cloud_location[3];
 	float cloud_volume[3] = { 100.0f, 0.0f, 100.0f };
 	// noise - main
-	int noise_main_resolution = 512;
+	int noise_main_resolution = 128;
 	int noise_main_subdivisions_a;
 	int noise_main_subdivisions_b;
 	int noise_main_subdivisions_c;
@@ -416,7 +417,7 @@ int main(int argc, char* argv[]) {
 	program_data* data = new program_data();
 
 	// init
-	bool read_shader_from_file = false;
+	bool read_shader_from_file = true;
 	if (read_shader_from_file) {
 		compute_shader_main = new shader("./data/compute_main.glsl", true);
 		compute_shader_weather = new shader("./data/compute_weather.glsl", true);
@@ -1063,6 +1064,7 @@ int main(int argc, char* argv[]) {
 
 	delete compute_shader_main;
 	delete compute_shader_weather;
+	delete compute_shader_cirro;
 	delete main_shader;
 
 	return 0;

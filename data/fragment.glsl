@@ -106,8 +106,7 @@ void main() {
 		atmosphere_color = atmosphere_scatter(dir.xyz, l);
 	} else {
 		atmosphere_color = background_color;
-	}* If the ray does intersect the cloud volume, we proceed to 
-
+	}
 
 	// ---- mie ---- //
 	
